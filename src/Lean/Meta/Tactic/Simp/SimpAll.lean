@@ -63,7 +63,7 @@ private partial def loop : M Bool := do
     -- We disable the current entry to prevent it to be simplified to `True`
     let simpThmsWithoutEntry := (← getSimpTheorems).eraseTheorem entry.id
     let ctx := { ctx with simpTheorems := simpThmsWithoutEntry }
-    let (r, stats) ← simpStep (← get).mvarId entry.proof entry.type ctx simprocs (stats := { (← get) with })
+    let (r, stats, _) ← simpStep (← get).mvarId entry.proof entry.type ctx simprocs (stats := { (← get) with })
     modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag }
     match r with
     | none => return true -- closed the goal
@@ -103,7 +103,7 @@ private partial def loop : M Bool := do
         }
   -- simplify target
   let mvarId := (← get).mvarId
-  let (r, stats) ← simpTarget mvarId (← get).ctx simprocs (stats := { (← get) with })
+  let (r, stats, _) ← simpTarget mvarId (← get).ctx simprocs (stats := { (← get) with })
   modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag }
   match r with
   | none => return true

@@ -29,4 +29,6 @@ builtin_initialize registerTraceClass `Meta.Tactic.simp.heads
 builtin_initialize registerTraceClass `Debug.Meta.Tactic.simp
 builtin_initialize registerTraceClass `Debug.Meta.Tactic.simp.congr (inherited := true)
 
+--TODO probably should be removed later
+builtin_initialize registerTraceClass `Meta.Tactic.simp.negativeCache
 end Lean

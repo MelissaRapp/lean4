@@ -39,7 +39,7 @@ deriving instance Repr for UseImplicitLambdaResult
     -- TODO: have `simpa` fail if it doesn't use `simp`.
     let ctx := { ctx with config := { ctx.config with failIfUnchanged := false } }
     dischargeWrapper.with fun discharge? => do
-      let (some (_, g), stats) ← simpGoal (← getMainGoal) ctx (simprocs := simprocs)
+      let (some (_, g), stats, _) ← simpGoal (← getMainGoal) ctx (simprocs := simprocs)
           (simplifyTarget := true) (discharge? := discharge?)
         | if getLinterUnnecessarySimpa (← getOptions) then
             logLint linter.unnecessarySimpa (← getRef) "try 'simp' instead of 'simpa'"
@@ -53,7 +53,7 @@ deriving instance Repr for UseImplicitLambdaResult
           pure (h, g)
         else
           (← g.assert `h (← inferType e) e).intro1
-        let (result?, stats) ← simpGoal g ctx (simprocs := simprocs) (fvarIdsToSimp := #[h])
+        let (result?, stats, _) ← simpGoal g ctx (simprocs := simprocs) (fvarIdsToSimp := #[h])
           (simplifyTarget := false) (stats := stats) (discharge? := discharge?)
         match result? with
         | some (xs, g) =>
@@ -69,7 +69,7 @@ deriving instance Repr for UseImplicitLambdaResult
                 m!"try 'simp at {Expr.fvar h}' instead of 'simpa using {Expr.fvar h}'"
         pure stats
       else if let some ldecl := (← getLCtx).findFromUserName? `this then
-        if let (some (_, g), stats) ← simpGoal g ctx (simprocs := simprocs)
+        if let (some (_, g), stats, _) ← simpGoal g ctx (simprocs := simprocs)
             (fvarIdsToSimp := #[ldecl.fvarId]) (simplifyTarget := false) (stats := stats)
             (discharge? := discharge?) then
           g.assumption; pure stats
