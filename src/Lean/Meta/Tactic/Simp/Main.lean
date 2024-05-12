@@ -670,19 +670,19 @@ def main (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := 
     trace[Meta.Tactic.simp.numSteps] "{s.numSteps}"
     return (r, { s with }, s.negativeCache)
 where
-  simpMain (e : Expr) : SimpM Result := withCatchingRuntimeEx do
+  simpMain (e : Expr) : SimpM Result := do
     --TODO move further inside simp later
     let negativeCache := (← get).negativeCache
     if negativeCache.contains e then
-      return {expr := e}
-    let result <- try
-      withoutCatchingRuntimeEx <| simp e
-    catch ex =>
-      reportDiag (← get).diag
-      if ex.isRuntime then
-        throwNestedTacticEx `simp ex
-      else
-        throw ex
+     return {expr := e}
+    let result <- tryCatchRuntimeEx
+      (simp e)
+      fun ex => do
+        reportDiag (← get).diag
+        if ex.isRuntime then
+          throwNestedTacticEx `simp ex
+        else
+          throw ex
     if result.expr == e then
       return ← cacheNegativeResult e
     return result
@@ -692,15 +692,15 @@ def dsimpMain (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Method
     let (r, s) ← dsimpMain e methods.toMethodsRef ctx |>.run { stats with }
     pure (r, { s with })
 where
-  dsimpMain (e : Expr) : SimpM Expr := withCatchingRuntimeEx do
-    try
-      withoutCatchingRuntimeEx <| dsimp e
-    catch ex =>
-      reportDiag (← get).diag
-      if ex.isRuntime then
-        throwNestedTacticEx `simp ex
-      else
-        throw ex
+  dsimpMain (e : Expr) : SimpM Expr :=
+    tryCatchRuntimeEx
+      (dsimp e)
+      fun ex => do
+        reportDiag (← get).diag
+        if ex.isRuntime then
+          throwNestedTacticEx `simp ex
+        else
+          throw ex
 
 end Simp
 open Simp (SimprocsArray Stats NegativeCache)
