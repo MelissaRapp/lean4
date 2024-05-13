@@ -113,12 +113,16 @@ structure Diagnostics where
   congrThmCounter : PHashMap Name Nat := {}
   deriving Inhabited
 
+-- TODO move this next to normal cache? Also is the discharge stuff relevant here aswell?
+abbrev NegativeCache := Array Expr
+
 structure State where
-  cache        : Cache := {}
-  congrCache   : CongrCache := {}
-  usedTheorems : UsedSimps := {}
-  numSteps     : Nat := 0
-  diag         : Diagnostics := {}
+  negativeCache : NegativeCache := {}
+  cache         : Cache := {}
+  congrCache    : CongrCache := {}
+  usedTheorems  : UsedSimps := {}
+  numSteps      : Nat := 0
+  diag          : Diagnostics := {}
 
 structure Stats where
   usedTheorems : UsedSimps := {}
@@ -140,7 +144,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { cache, congrCache, usedTheorems, numSteps, diag } => { cache, congrCache, usedTheorems, numSteps, diag := f diag }
+    modify fun { negativeCache, cache, congrCache, usedTheorems, numSteps, diag } => { negativeCache, cache, congrCache, usedTheorems, numSteps, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
