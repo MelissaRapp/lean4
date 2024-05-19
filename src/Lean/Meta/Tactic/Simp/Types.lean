@@ -118,6 +118,7 @@ abbrev NegativeCache := Array Expr
 
 structure State where
   negativeCache : NegativeCache := {}
+  newNegativeCacheEntries : NegativeCache := {}
   cache         : Cache := {}
   congrCache    : CongrCache := {}
   usedTheorems  : UsedSimps := {}
@@ -144,7 +145,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { negativeCache, cache, congrCache, usedTheorems, numSteps, diag } => { negativeCache, cache, congrCache, usedTheorems, numSteps, diag := f diag }
+    modify fun { negativeCache, newNegativeCacheEntries, cache, congrCache, usedTheorems, numSteps, diag } => { negativeCache, newNegativeCacheEntries,cache, congrCache, usedTheorems, numSteps, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
