@@ -605,7 +605,10 @@ def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
   return r
 
 def cacheNegativeResult (e : Expr) : SimpM Result := do
-  modify fun s => {s with negativeCache := s.negativeCache.push e}
+  --TODO verify this is the correct mvar check
+  unless e.hasMVar do
+    modify fun s => {s with negativeCache := s.negativeCache.push e}
+    return {expr := e}
   --TODO initial values always correct?
   return {expr := e}
 
