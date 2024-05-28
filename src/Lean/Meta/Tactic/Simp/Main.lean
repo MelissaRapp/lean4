@@ -612,6 +612,12 @@ def cacheNegativeResult (e : Expr) : SimpM Result := do
   --TODO initial values always correct?
   return {expr := e}
 
+def cacheNegativeResult' (e : Expr) : SimpM PUnit := do
+  --TODO verify this is the correct mvar check
+  unless e.hasMVar do
+    modify fun s => {s with negativeCache := s.negativeCache.push e}
+    --trace[Meta.Tactic.simp.negativeCache] "negativeCache: {(<-get).negativeCache}"
+
 partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do
   let cfg ← getConfig
   if (← get).numSteps > cfg.maxSteps then
@@ -634,14 +640,22 @@ where
       let r ← r.mkEqTrans (← simpStep r.expr)
       visitPost cfg r
   visitPost (cfg : Config) (r : Result) : SimpM Result := do
+    --TODO should done case go into negative Cache?
     match (← post r.expr) with
-    | .done r' => cacheResult e cfg (← r.mkEqTrans r')
+    | .done r' => do
+    --trace[Meta.Tactic.simp.negativeCache] "gecativeCache .done"
+    cacheNegativeResult' e
+    cacheResult e cfg (← r.mkEqTrans r')
     | .continue none => visitPostContinue cfg r
     | .visit r' | .continue (some r') => visitPostContinue cfg (← r.mkEqTrans r')
   visitPostContinue (cfg : Config) (r : Result) : SimpM Result := do
     let mut r := r
     unless cfg.singlePass || e == r.expr do
       r ← r.mkEqTrans (← simpLoop r.expr)
+    if e == r.expr then do
+      --trace[Meta.Tactic.simp.negativeCache] "gecativeCache visitPost ="
+      cacheNegativeResult' e
+      return <- cacheResult e cfg r
     cacheResult e cfg r
 
 @[export lean_simp]
@@ -652,6 +666,9 @@ def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
   go
 where
   go : SimpM Result := do
+    let negativeCache := (<-get).negativeCache
+    if negativeCache.contains e then
+      return {expr := e}
     let cfg ← getConfig
     if cfg.memoize then
       let cache := (← get).cache
@@ -671,10 +688,9 @@ def main (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := 
     return (r, { s with }, s.negativeCache)
 where
   simpMain (e : Expr) : SimpM Result := withCatchingRuntimeEx do
-    --TODO move further inside simp later, remove debug traces
-    let negativeCache := (← get).negativeCache
-    if negativeCache.contains e then
-     return {expr := e}
+    --let negativeCache := (← get).negativeCache
+    --if negativeCache.contains e then
+    -- return {expr := e}
     let result <- try
       withoutCatchingRuntimeEx <| simp e
     catch ex =>
@@ -683,8 +699,8 @@ where
         throwNestedTacticEx `simp ex
       else
         throw ex
-    if result.expr == e then
-      return ← cacheNegativeResult e
+    --if result.expr == e then
+    --  return ← cacheNegativeResult e
     return result
 
 def dsimpMain (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := {}) : MetaM (Expr × Stats) := do

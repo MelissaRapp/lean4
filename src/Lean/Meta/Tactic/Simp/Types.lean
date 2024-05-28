@@ -320,8 +320,9 @@ Save current cache, reset it, execute `x`, and then restore original cache.
 -/
 @[inline] def withFreshCache (x : SimpM α) : SimpM α := do
   let cacheSaved := (← get).cache
-  modify fun s => { s with cache := {} }
-  try x finally modify fun s => { s with cache := cacheSaved }
+  let negativeCacheSaved := (<- get).negativeCache
+  modify fun s => { s with cache := {}, negativeCache := {} }
+  try x finally modify fun s => { s with cache := cacheSaved, negativeCache := negativeCacheSaved }
 
 @[inline] def withDischarger (discharge? : Expr → SimpM (Option Expr)) (wellBehavedDischarge : Bool) (x : SimpM α) : SimpM α :=
   withFreshCache <|
