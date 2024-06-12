@@ -604,18 +604,9 @@ def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
     modify fun s => { s with cache := s.cache.insert e r }
   return r
 
-def cacheNegativeResult (e : Expr) : SimpM Result := do
-  --TODO verify this is the correct mvar check
-  unless e.hasMVar do
-    modify fun s => {s with negativeCache := s.negativeCache.push e}
-    return {expr := e}
-  --TODO initial values always correct?
-  return {expr := e}
-
 def cacheNegativeResult' (e : Expr) : SimpM PUnit := do
-  --TODO verify this is the correct mvar check
   unless e.hasMVar do
-    modify fun s => {s with negativeCache := s.negativeCache.push e}
+    modify fun s => {s with negativeCache := s.negativeCache.insert e}
     --trace[Meta.Tactic.simp.negativeCache] "negativeCache: {(<-get).negativeCache}"
 
 partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do

@@ -114,7 +114,7 @@ structure Diagnostics where
   deriving Inhabited
 
 -- TODO move this next to normal cache? Also is the discharge stuff relevant here aswell?
-abbrev NegativeCache := Array Expr
+abbrev NegativeCache := HashSet Expr
 
 structure State where
   negativeCache : NegativeCache := {}
