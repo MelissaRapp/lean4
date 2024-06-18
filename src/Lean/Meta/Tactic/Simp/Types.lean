@@ -116,19 +116,29 @@ structure Diagnostics where
 -- TODO move this next to normal cache? Also is the discharge stuff relevant here aswell?
 abbrev NegativeCache := HashSet Expr
 
+structure CacheHits where
+  negativeCacheHits : Nat := 0
+  bothCacheHits : Nat := 0
+  positiveCacheHits : Nat := 0
+
+@[inline] def CacheHits.incrementPositiveCacheHit (c : CacheHits) : CacheHits :=
+  {c with positiveCacheHits := c.positiveCacheHits + 1}
+@[inline] def CacheHits.incrementBothCacheHit (c : CacheHits) : CacheHits :=
+  {c with bothCacheHits := c.bothCacheHits + 1}
+@[inline] def CacheHits.incrementNegativeCacheHit (c : CacheHits) : CacheHits :=
+  {c with negativeCacheHits := c.negativeCacheHits + 1}
+
+@[inline] def CacheHits.mergeCacheHits (c1 c2: CacheHits) : CacheHits :=
+  {negativeCacheHits := c1.negativeCacheHits + c2.negativeCacheHits ,bothCacheHits :=  c1.bothCacheHits + c2.bothCacheHits, positiveCacheHits:= c1.positiveCacheHits + c2.positiveCacheHits}
+
 structure State where
   negativeCache : NegativeCache := {}
   cache         : Cache := {}
   congrCache    : CongrCache := {}
   usedTheorems  : UsedSimps := {}
   numSteps      : Nat := 0
-  negativeCacheHits : Nat := 0
-  positiveCacheHits : Nat := 0
+  cacheHits     : CacheHits := {}
   diag          : Diagnostics := {}
-
-structure CacheHits where
-  negativeCacheHits : Nat := 0
-  positiveCacheHits : Nat := 0
 
 structure Stats where
   usedTheorems : UsedSimps := {}
@@ -151,7 +161,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { negativeCache, cache, congrCache, usedTheorems, numSteps,  negativeCacheHits, positiveCacheHits, diag } => { negativeCache,cache, congrCache, usedTheorems, numSteps, negativeCacheHits, positiveCacheHits, diag := f diag }
+    modify fun { negativeCache, cache, congrCache, usedTheorems, numSteps,  cacheHits, diag } => { negativeCache,cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
