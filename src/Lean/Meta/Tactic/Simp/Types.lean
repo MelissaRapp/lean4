@@ -122,10 +122,17 @@ structure State where
   congrCache    : CongrCache := {}
   usedTheorems  : UsedSimps := {}
   numSteps      : Nat := 0
+  negativeCacheHits : Nat := 0
+  positiveCacheHits : Nat := 0
   diag          : Diagnostics := {}
+
+structure CacheHits where
+  negativeCacheHits : Nat := 0
+  positiveCacheHits : Nat := 0
 
 structure Stats where
   usedTheorems : UsedSimps := {}
+  cacheHits : CacheHits := {}
   diag : Diagnostics := {}
 
 private opaque MethodsRefPointed : NonemptyType.{0}
@@ -144,7 +151,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { negativeCache, cache, congrCache, usedTheorems, numSteps, diag } => { negativeCache,cache, congrCache, usedTheorems, numSteps, diag := f diag }
+    modify fun { negativeCache, cache, congrCache, usedTheorems, numSteps,  negativeCacheHits, positiveCacheHits, diag } => { negativeCache,cache, congrCache, usedTheorems, numSteps, negativeCacheHits, positiveCacheHits, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.

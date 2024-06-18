@@ -659,11 +659,16 @@ where
   go : SimpM Result := do
     let negativeCache := (<-get).negativeCache
     if negativeCache.contains e then
+      modify fun s => {s with negativeCacheHits := s.negativeCacheHits +1 }
+      let cache := (← get).cache
+      if cache.contains e then
+        modify fun s => {s with positiveCacheHits := s.positiveCacheHits +1}
       return {expr := e}
     let cfg ← getConfig
     if cfg.memoize then
       let cache := (← get).cache
       if let some result := cache.find? e then
+        modify fun s => {s with positiveCacheHits := s.positiveCacheHits +1}
         return result
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
     simpLoop e
@@ -676,7 +681,7 @@ def main (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := 
   withSimpContext ctx do
     let (r, s) ← simpMain e methods.toMethodsRef ctx |>.run {stats with negativeCache}
     trace[Meta.Tactic.simp.numSteps] "{s.numSteps}"
-    return (r, { s with }, s.negativeCache)
+    return (r, { s with cacheHits := {negativeCacheHits := s.negativeCacheHits, positiveCacheHits := s.positiveCacheHits}}, s.negativeCache)
 where
   simpMain (e : Expr) : SimpM Result := withCatchingRuntimeEx do
     --let negativeCache := (← get).negativeCache
