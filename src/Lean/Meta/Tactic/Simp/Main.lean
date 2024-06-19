@@ -605,7 +605,7 @@ def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
   return r
 
 def cacheNegativeResult' (e : Expr) : SimpM PUnit := do
-  unless e.hasMVar do
+  unless e.hasMVar || e.hasFVar do
     modify fun s => {s with negativeCache := s.negativeCache.insert e}
     --trace[Meta.Tactic.simp.negativeCache] "negativeCache: {(<-get).negativeCache}"
 
