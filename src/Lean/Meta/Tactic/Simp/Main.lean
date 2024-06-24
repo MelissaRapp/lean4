@@ -604,11 +604,6 @@ def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
     modify fun s => { s with cache := s.cache.insert e r }
   return r
 
-def cacheNegativeResult' (e : Expr) : SimpM PUnit := do
-  unless e.hasMVar do
-    modify fun s => {s with negativeCache := s.negativeCache.insert e}
-    --trace[Meta.Tactic.simp.negativeCache] "negativeCache: {(<-get).negativeCache}"
-
 partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do
   let cfg ← getConfig
   if (← get).numSteps > cfg.maxSteps then
@@ -631,11 +626,8 @@ where
       let r ← r.mkEqTrans (← simpStep r.expr)
       visitPost cfg r
   visitPost (cfg : Config) (r : Result) : SimpM Result := do
-    --TODO should done case go into negative Cache?
     match (← post r.expr) with
     | .done r' => do
-    --trace[Meta.Tactic.simp.negativeCache] "gecativeCache .done"
-    cacheNegativeResult' e
     cacheResult e cfg (← r.mkEqTrans r')
     | .continue none => visitPostContinue cfg r
     | .visit r' | .continue (some r') => visitPostContinue cfg (← r.mkEqTrans r')
@@ -644,8 +636,6 @@ where
     unless cfg.singlePass || e == r.expr do
       r ← r.mkEqTrans (← simpLoop r.expr)
     if e == r.expr then do
-      --trace[Meta.Tactic.simp.negativeCache] "gecativeCache visitPost ="
-      cacheNegativeResult' e
       return <- cacheResult e cfg r
     cacheResult e cfg r
 
@@ -658,19 +648,11 @@ def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
 where
   go : SimpM Result := do
     modify fun s => {s with cacheHits := s.cacheHits.incrementSimpCalls}
-    let negativeCache := (<-get).negativeCache
-    if negativeCache.contains e then
-      let cache := (← get).cache
-      if cache.contains e then
-        modify fun s => {s with cacheHits := s.cacheHits.incrementBothCacheHit }
-      else
-         modify fun s => {s with cacheHits := s.cacheHits.incrementNegativeCacheHit }
-      return {expr := e}
     let cfg ← getConfig
     if cfg.memoize then
       let cache := (← get).cache
       if let some result := cache.find? e then
-        modify fun s => {s with cacheHits := s.cacheHits.incrementPositiveCacheHit}
+        modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit}
         return result
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
     simpLoop e
@@ -678,17 +660,14 @@ where
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
 
-def main (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := {}) (negativeCache : NegativeCache := {}): MetaM (Result × Stats × NegativeCache) := do
+def main (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := {}) (cache : Cache := {}): MetaM (Result × Stats × Cache) := do
   let ctx := { ctx with config := (← ctx.config.updateArith), lctxInitIndices := (← getLCtx).numIndices }
   withSimpContext ctx do
-    let (r, s) ← simpMain e methods.toMethodsRef ctx |>.run {stats with negativeCache}
+    let (r, s) ← simpMain e methods.toMethodsRef ctx |>.run {stats with cache}
     trace[Meta.Tactic.simp.numSteps] "{s.numSteps}"
-    return (r, { s with }, s.negativeCache)
+    return (r, { s with }, s.cache)
 where
   simpMain (e : Expr) : SimpM Result := withCatchingRuntimeEx do
-    --let negativeCache := (← get).negativeCache
-    --if negativeCache.contains e then
-    -- return {expr := e}
     let result <- try
       withoutCatchingRuntimeEx <| simp e
     catch ex =>
@@ -697,8 +676,6 @@ where
         throwNestedTacticEx `simp ex
       else
         throw ex
-    --if result.expr == e then
-    --  return ← cacheNegativeResult e
     return result
 
 def dsimpMain (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := {}) : MetaM (Expr × Stats) := do
@@ -717,13 +694,13 @@ where
         throw ex
 
 end Simp
-open Simp (SimprocsArray Stats NegativeCache)
+open Simp (SimprocsArray Stats)
 
 def simp (e : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (stats : Stats := {}) (negativeCache : NegativeCache := {}) : MetaM (Simp.Result  × Stats × NegativeCache) := do profileitM Exception "simp" (← getOptions) do
+    (stats : Stats := {}) (cache : Simp.Cache := {}) : MetaM (Simp.Result  × Stats × Simp.Cache) := do profileitM Exception "simp" (← getOptions) do
   match discharge? with
-  | none   => Simp.main e ctx stats (methods := Simp.mkDefaultMethodsCore simprocs) negativeCache
-  | some d => Simp.main e ctx stats (methods := Simp.mkMethods simprocs d (wellBehavedDischarge := false)) negativeCache
+  | none   => Simp.main e ctx stats (methods := Simp.mkDefaultMethodsCore simprocs) cache
+  | some d => Simp.main e ctx stats (methods := Simp.mkMethods simprocs d (wellBehavedDischarge := false)) cache
 
 def dsimp (e : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[])
     (stats : Stats := {}) : MetaM (Expr × Stats) := do profileitM Exception "dsimp" (← getOptions) do
@@ -731,25 +708,25 @@ def dsimp (e : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[])
 
 /-- See `simpTarget`. This method assumes `mvarId` is not assigned, and we are already using `mvarId`s local context. -/
 def simpTargetCore (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : NegativeCache := {}) : MetaM (Option MVarId × Stats × NegativeCache) := do
+    (mayCloseGoal := true) (stats : Stats := {}) (cache : Simp.Cache := {}) : MetaM (Option MVarId × Stats × Simp.Cache) := do
   let target ← instantiateMVars (← mvarId.getType)
-  let (r, stats, negativeCache') ← simp target ctx simprocs discharge? stats negativeCache
+  let (r, stats, cache') ← simp target ctx simprocs discharge? stats cache
   if mayCloseGoal && r.expr.isTrue then
     match r.proof? with
     | some proof => mvarId.assign (← mkOfEqTrue proof)
     | none => mvarId.assign (mkConst ``True.intro)
-    return (none, stats, negativeCache')
+    return (none, stats, cache')
   else
-    return (← applySimpResultToTarget mvarId target r, stats, negativeCache')
+    return (← applySimpResultToTarget mvarId target r, stats, cache')
 
 /--
   Simplify the given goal target (aka type). Return `none` if the goal was closed. Return `some mvarId'` otherwise,
   where `mvarId'` is the simplified new goal. -/
 def simpTarget (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : NegativeCache := {}) : MetaM (Option MVarId × Stats × NegativeCache) :=
+    (mayCloseGoal := true) (stats : Stats := {}) (cache : Simp.Cache := {}) : MetaM (Option MVarId × Stats × Simp.Cache) :=
   mvarId.withContext do
     mvarId.checkNotAssigned `simp
-    simpTargetCore mvarId ctx simprocs discharge? mayCloseGoal stats negativeCache
+    simpTargetCore mvarId ctx simprocs discharge? mayCloseGoal stats cache
 
 /--
   Apply the result `r` for `prop` (which is inhabited by `proof`). Return `none` if the goal was closed. Return `some (proof', prop')`
@@ -781,9 +758,9 @@ def applySimpResultToFVarId (mvarId : MVarId) (fvarId : FVarId) (r : Simp.Result
 
   This method assumes `mvarId` is not assigned, and we are already using `mvarId`s local context. -/
 def simpStep (mvarId : MVarId) (proof : Expr) (prop : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : NegativeCache := {}) : MetaM (Option (Expr × Expr) × Stats × NegativeCache) := do
-    let (r, stats, negativeCache') ← simp prop ctx simprocs discharge? stats negativeCache
-    return (← applySimpResultToProp mvarId proof prop r (mayCloseGoal := mayCloseGoal), stats, negativeCache')
+    (mayCloseGoal := true) (stats : Stats := {}) (cache : Simp.Cache := {}) : MetaM (Option (Expr × Expr) × Stats × Simp.Cache) := do
+    let (r, stats, cache') ← simp prop ctx simprocs discharge? stats cache
+    return (← applySimpResultToProp mvarId proof prop r (mayCloseGoal := mayCloseGoal), stats, cache')
 
 def applySimpResultToLocalDeclCore (mvarId : MVarId) (fvarId : FVarId) (r : Option (Expr × Expr)) : MetaM (Option (FVarId × MVarId)) := do
   match r with
@@ -814,68 +791,68 @@ def applySimpResultToLocalDecl (mvarId : MVarId) (fvarId : FVarId) (r : Simp.Res
     applySimpResultToLocalDeclCore mvarId fvarId (← applySimpResultToFVarId mvarId fvarId r mayCloseGoal)
 
 def simpLocalDecl (mvarId : MVarId) (fvarId : FVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : NegativeCache := {}) : MetaM (Option (FVarId × MVarId) × Stats × NegativeCache) := do
+    (mayCloseGoal := true) (stats : Stats := {}) : MetaM (Option (FVarId × MVarId) × Stats) := do
   mvarId.withContext do
     mvarId.checkNotAssigned `simp
     let type ← instantiateMVars (← fvarId.getType)
-    let (r, stats, negativeCache) ← simpStep mvarId (mkFVar fvarId) type ctx simprocs discharge? mayCloseGoal stats negativeCache
-    return (← applySimpResultToLocalDeclCore mvarId fvarId r, stats, negativeCache)
+    let (r, stats, _) ← simpStep mvarId (mkFVar fvarId) type ctx simprocs discharge? mayCloseGoal stats
+    return (← applySimpResultToLocalDeclCore mvarId fvarId r, stats)
 
 def simpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
     (simplifyTarget : Bool := true) (fvarIdsToSimp : Array FVarId := #[])
-    (stats : Stats := {}) (negativeCache : NegativeCache := {}): MetaM (Option (Array FVarId × MVarId) × Stats × NegativeCache) := do
+    (stats : Stats := {}) (cache : Simp.Cache := {}): MetaM (Option (Array FVarId × MVarId) × Stats × Simp.Cache) := do
   mvarId.withContext do
     mvarId.checkNotAssigned `simp
     let mut mvarIdNew := mvarId
     let mut toAssert := #[]
     let mut replaced := #[]
     let mut stats := stats
-    let mut negativeCache := negativeCache
+    let mut cache := cache
     for fvarId in fvarIdsToSimp do
       let localDecl ← fvarId.getDecl
       let type ← instantiateMVars localDecl.type
       let ctx := { ctx with simpTheorems := ctx.simpTheorems.eraseTheorem (.fvar localDecl.fvarId) }
-      let (r, stats', negativeCache') ← simp type ctx simprocs discharge? stats negativeCache
-      stats := stats'; negativeCache := negativeCache'
+      let (r, stats', cache') ← simp type ctx simprocs discharge? stats cache
+      stats := stats'; cache := cache'
       match r.proof? with
       | some _ => match (← applySimpResultToProp mvarIdNew (mkFVar fvarId) type r) with
-        | none => return (none, stats, negativeCache)
+        | none => return (none, stats, cache)
         | some (value, type) => toAssert := toAssert.push { userName := localDecl.userName, type := type, value := value }
       | none =>
         if r.expr.isFalse then
           mvarIdNew.assign (← mkFalseElim (← mvarIdNew.getType) (mkFVar fvarId))
-          return (none, stats, negativeCache)
+          return (none, stats, cache)
         -- TODO: if there are no forwards dependencies we may consider using the same approach we used when `r.proof?` is a `some ...`
         -- Reason: it introduces a `mkExpectedTypeHint`
         mvarIdNew ← mvarIdNew.replaceLocalDeclDefEq fvarId r.expr
         replaced := replaced.push fvarId
     if simplifyTarget then
-      match (← simpTarget mvarIdNew ctx simprocs discharge? (stats := stats) (negativeCache := negativeCache)) with
-      | (none, stats', negativeCache') => return (none, stats', negativeCache')
-      | (some mvarIdNew', stats', negativeCache') => mvarIdNew := mvarIdNew'; stats := stats'; negativeCache := negativeCache'
+      match (← simpTarget mvarIdNew ctx simprocs discharge? (stats := stats) (cache := cache)) with
+      | (none, stats', cache') => return (none, stats', cache')
+      | (some mvarIdNew', stats', cache') => mvarIdNew := mvarIdNew'; stats := stats'; cache := cache'
     let (fvarIdsNew, mvarIdNew') ← mvarIdNew.assertHypotheses toAssert
     mvarIdNew := mvarIdNew'
     let toClear := fvarIdsToSimp.filter fun fvarId => !replaced.contains fvarId
     mvarIdNew ← mvarIdNew.tryClearMany toClear
     if ctx.config.failIfUnchanged && mvarId == mvarIdNew then
       throwError "simp made no progress"
-    return (some (fvarIdsNew, mvarIdNew), stats, negativeCache)
+    return (some (fvarIdsNew, mvarIdNew), stats, cache)
 
 def simpTargetStar (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (stats : Stats := {}) (negativeCache : NegativeCache := {}): MetaM (TacticResultCNM × Stats × NegativeCache) := mvarId.withContext do
+    (stats : Stats := {}) : MetaM (TacticResultCNM × Stats) := mvarId.withContext do
   let mut ctx := ctx
   for h in (← getPropHyps) do
     let localDecl ← h.getDecl
     let proof  := localDecl.toExpr
     let simpTheorems ← ctx.simpTheorems.addTheorem (.fvar h) proof
     ctx := { ctx with simpTheorems }
-  match (← simpTarget mvarId ctx simprocs discharge? (stats := stats) (negativeCache := negativeCache)) with
-  | (none, stats, negativeCache') => return (TacticResultCNM.closed, stats, negativeCache')
-  | (some mvarId', stats', negativeCache') =>
+  match (← simpTarget mvarId ctx simprocs discharge? (stats := stats)) with
+  | (none, stats, _) => return (TacticResultCNM.closed, stats)
+  | (some mvarId', stats', _) =>
     if (← mvarId.getType) == (← mvarId'.getType) then
-      return (TacticResultCNM.noChange, stats, negativeCache')
+      return (TacticResultCNM.noChange, stats)
     else
-      return (TacticResultCNM.modified mvarId', stats', negativeCache')
+      return (TacticResultCNM.modified mvarId', stats')
 
 def dsimpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (simplifyTarget : Bool := true) (fvarIdsToSimp : Array FVarId := #[])
     (stats : Stats := {}) : MetaM (Option MVarId × Stats) := do

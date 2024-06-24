@@ -113,29 +113,19 @@ structure Diagnostics where
   congrThmCounter : PHashMap Name Nat := {}
   deriving Inhabited
 
--- TODO move this next to normal cache? Also is the discharge stuff relevant here aswell?
-abbrev NegativeCache := HashSet Expr
-
 structure CacheHits where
-  negativeCacheHits : Float := 0
-  bothCacheHits : Float := 0
-  positiveCacheHits : Float := 0
+  cacheHits : Float := 0
   simpCalls : Float := 0
 
-@[inline] def CacheHits.incrementPositiveCacheHit (c : CacheHits) : CacheHits :=
-  {c with positiveCacheHits := c.positiveCacheHits + 1}
-@[inline] def CacheHits.incrementBothCacheHit (c : CacheHits) : CacheHits :=
-  {c with bothCacheHits := c.bothCacheHits + 1}
-@[inline] def CacheHits.incrementNegativeCacheHit (c : CacheHits) : CacheHits :=
-  {c with negativeCacheHits := c.negativeCacheHits + 1}
+@[inline] def CacheHits.incrementCacheHit (c : CacheHits) : CacheHits :=
+  {c with cacheHits := c.cacheHits + 1}
 @[inline] def CacheHits.incrementSimpCalls (c : CacheHits) : CacheHits :=
   {c with simpCalls := c.simpCalls + 1}
 
 @[inline] def CacheHits.mergeCacheHits (c1 c2: CacheHits) : CacheHits :=
-  {negativeCacheHits := c1.negativeCacheHits + c2.negativeCacheHits ,bothCacheHits :=  c1.bothCacheHits + c2.bothCacheHits, positiveCacheHits:= c1.positiveCacheHits + c2.positiveCacheHits, simpCalls := c1.simpCalls + c2.simpCalls}
+  {cacheHits :=  c1.cacheHits + c2.cacheHits, simpCalls := c1.simpCalls + c2.simpCalls}
 
 structure State where
-  negativeCache : NegativeCache := {}
   cache         : Cache := {}
   congrCache    : CongrCache := {}
   usedTheorems  : UsedSimps := {}
@@ -164,7 +154,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { negativeCache, cache, congrCache, usedTheorems, numSteps,  cacheHits, diag } => { negativeCache,cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag }
+    modify fun {  cache, congrCache, usedTheorems, numSteps,  cacheHits, diag } => { cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
@@ -340,9 +330,8 @@ Save current cache, reset it, execute `x`, and then restore original cache.
 -/
 @[inline] def withFreshCache (x : SimpM α) : SimpM α := do
   let cacheSaved := (← get).cache
-  let negativeCacheSaved := (<- get).negativeCache
-  modify fun s => { s with cache := {}, negativeCache := {} }
-  try x finally modify fun s => { s with cache := cacheSaved, negativeCache := negativeCacheSaved }
+  modify fun s => { s with cache := {}}
+  try x finally modify fun s => { s with cache := cacheSaved }
 
 @[inline] def withDischarger (discharge? : Expr → SimpM (Option Expr)) (wellBehavedDischarge : Bool) (x : SimpM α) : SimpM α :=
   withFreshCache <|
