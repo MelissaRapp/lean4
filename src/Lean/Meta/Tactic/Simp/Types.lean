@@ -117,10 +117,10 @@ structure Diagnostics where
 abbrev NegativeCache := HashSet Expr
 
 structure CacheHits where
-  negativeCacheHits : Nat := 0
-  bothCacheHits : Nat := 0
-  positiveCacheHits : Nat := 0
-  simpCalls : Nat := 0
+  negativeCacheHits : Float := 0
+  bothCacheHits : Float := 0
+  positiveCacheHits : Float := 0
+  simpCalls : Float := 0
 
 @[inline] def CacheHits.incrementPositiveCacheHit (c : CacheHits) : CacheHits :=
   {c with positiveCacheHits := c.positiveCacheHits + 1}
