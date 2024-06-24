@@ -657,6 +657,7 @@ def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
   go
 where
   go : SimpM Result := do
+    modify fun s => {s with cacheHits := s.cacheHits.incrementSimpCalls}
     let negativeCache := (<-get).negativeCache
     if negativeCache.contains e then
       let cache := (← get).cache

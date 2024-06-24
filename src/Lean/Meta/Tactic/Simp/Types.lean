@@ -120,6 +120,7 @@ structure CacheHits where
   negativeCacheHits : Nat := 0
   bothCacheHits : Nat := 0
   positiveCacheHits : Nat := 0
+  simpCalls : Nat := 0
 
 @[inline] def CacheHits.incrementPositiveCacheHit (c : CacheHits) : CacheHits :=
   {c with positiveCacheHits := c.positiveCacheHits + 1}
@@ -127,9 +128,11 @@ structure CacheHits where
   {c with bothCacheHits := c.bothCacheHits + 1}
 @[inline] def CacheHits.incrementNegativeCacheHit (c : CacheHits) : CacheHits :=
   {c with negativeCacheHits := c.negativeCacheHits + 1}
+@[inline] def CacheHits.incrementSimpCalls (c : CacheHits) : CacheHits :=
+  {c with simpCalls := c.simpCalls + 1}
 
 @[inline] def CacheHits.mergeCacheHits (c1 c2: CacheHits) : CacheHits :=
-  {negativeCacheHits := c1.negativeCacheHits + c2.negativeCacheHits ,bothCacheHits :=  c1.bothCacheHits + c2.bothCacheHits, positiveCacheHits:= c1.positiveCacheHits + c2.positiveCacheHits}
+  {negativeCacheHits := c1.negativeCacheHits + c2.negativeCacheHits ,bothCacheHits :=  c1.bothCacheHits + c2.bothCacheHits, positiveCacheHits:= c1.positiveCacheHits + c2.positiveCacheHits, simpCalls := c1.simpCalls + c2.simpCalls}
 
 structure State where
   negativeCache : NegativeCache := {}
