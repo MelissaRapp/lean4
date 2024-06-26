@@ -115,18 +115,22 @@ structure Diagnostics where
 
 structure CacheHits where
   cacheHits : Float := 0
+  nonPassedCacheHits : Float := 0
   simpCalls : Float := 0
 
 @[inline] def CacheHits.incrementCacheHit (c : CacheHits) : CacheHits :=
   {c with cacheHits := c.cacheHits + 1}
+@[inline] def CacheHits.incrementnonPassedCacheHit (c : CacheHits) : CacheHits :=
+  {c with nonPassedCacheHits := c.nonPassedCacheHits + 1}
 @[inline] def CacheHits.incrementSimpCalls (c : CacheHits) : CacheHits :=
   {c with simpCalls := c.simpCalls + 1}
 
 @[inline] def CacheHits.mergeCacheHits (c1 c2: CacheHits) : CacheHits :=
-  {cacheHits :=  c1.cacheHits + c2.cacheHits, simpCalls := c1.simpCalls + c2.simpCalls}
+  {cacheHits :=  c1.cacheHits + c2.cacheHits, simpCalls := c1.simpCalls + c2.simpCalls, nonPassedCacheHits := c1.nonPassedCacheHits + c2.nonPassedCacheHits}
 
 structure State where
   cache         : Cache := {}
+  nonPassedCache: Cache := {}
   congrCache    : CongrCache := {}
   usedTheorems  : UsedSimps := {}
   numSteps      : Nat := 0
@@ -154,7 +158,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun {  cache, congrCache, usedTheorems, numSteps,  cacheHits, diag } => { cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag }
+    modify fun { nonPassedCache, cache, congrCache, usedTheorems, numSteps,  cacheHits, diag } => { nonPassedCache ,cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
@@ -330,8 +334,9 @@ Save current cache, reset it, execute `x`, and then restore original cache.
 -/
 @[inline] def withFreshCache (x : SimpM α) : SimpM α := do
   let cacheSaved := (← get).cache
-  modify fun s => { s with cache := {}}
-  try x finally modify fun s => { s with cache := cacheSaved }
+  let nonPassedCacheSaved := (<- get).nonPassedCache
+  modify fun s => { s with cache := {}, nonPassedCache := {}}
+  try x finally modify fun s => { s with cache := cacheSaved, nonPassedCache := nonPassedCacheSaved }
 
 @[inline] def withDischarger (discharge? : Expr → SimpM (Option Expr)) (wellBehavedDischarge : Bool) (x : SimpM α) : SimpM α :=
   withFreshCache <|

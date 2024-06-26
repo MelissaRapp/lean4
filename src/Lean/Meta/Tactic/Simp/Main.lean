@@ -601,7 +601,7 @@ def simpStep (e : Expr) : SimpM Result := do
 
 def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
   if cfg.memoize && r.cache then
-    modify fun s => { s with cache := s.cache.insert e r }
+    modify fun s => { s with cache := s.cache.insert e r , nonPassedCache := s.nonPassedCache.insert e r}
   return r
 
 partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do
@@ -650,6 +650,9 @@ where
     modify fun s => {s with cacheHits := s.cacheHits.incrementSimpCalls}
     let cfg ← getConfig
     if cfg.memoize then
+      let nonPassedCache := (← get).nonPassedCache
+      if nonPassedCache.contains e then
+        modify fun s => {s with cacheHits := s.cacheHits.incrementnonPassedCacheHit}
       let cache := (← get).cache
       if let some result := cache.find? e then
         modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit}
