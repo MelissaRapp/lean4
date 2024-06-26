@@ -600,7 +600,7 @@ def simpStep (e : Expr) : SimpM Result := do
   | .fvar ..     => return { expr := (← reduceFVar (← getConfig) (← getSimpTheorems) e) }
 
 def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
-  if cfg.memoize && r.cache then
+  if cfg.memoize && r.cache && !e.hasFVar then
     modify fun s => { s with cache := s.cache.insert e r , nonPassedCache := s.nonPassedCache.insert e r}
   return r
 
