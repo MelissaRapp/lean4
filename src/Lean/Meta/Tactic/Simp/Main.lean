@@ -600,7 +600,7 @@ def simpStep (e : Expr) : SimpM Result := do
   | .fvar ..     => return { expr := (← reduceFVar (← getConfig) (← getSimpTheorems) e) }
 
 def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
-  if cfg.memoize && r.cache && !e.hasFVar then
+  if cfg.memoize && r.cache then
     modify fun s => { s with cache := s.cache.insert e r , nonPassedCache := s.nonPassedCache.insert e r}
   return r
 
@@ -647,18 +647,20 @@ def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
   go
 where
   go : SimpM Result := do
-    modify fun s => {s with cacheHits := s.cacheHits.incrementSimpCalls}
-    let cfg ← getConfig
-    if cfg.memoize then
+      modify fun s => {s with cacheHits := s.cacheHits.incrementSimpCalls}
+      let cfg ← getConfig
+      let cache := (<-get).cache
       let nonPassedCache := (← get).nonPassedCache
-      if nonPassedCache.contains e then
-        modify fun s => {s with cacheHits := s.cacheHits.incrementnonPassedCacheHit}
-      let cache := (← get).cache
-      if let some result := cache.find? e then
+      if cfg.memoize then
+        if let some result := nonPassedCache.find? e then
+          modify fun s => {s with cacheHits := s.cacheHits.incrementnonPassedCacheHit}
+          if let some res2 := cache.find? e then if res2.expr == result.expr then modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit}
+          return result
+      trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
+      let result := <- simpLoop e
+      if let some res2 := cache.find? e then if res2.expr == result.expr then
         modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit}
-        return result
-    trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
-    simpLoop e
+      return result
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
