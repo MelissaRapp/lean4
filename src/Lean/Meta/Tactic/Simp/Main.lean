@@ -600,7 +600,8 @@ def simpStep (e : Expr) : SimpM Result := do
   | .fvar ..     => return { expr := (← reduceFVar (← getConfig) (← getSimpTheorems) e) }
 
 def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
-  if cfg.memoize && r.cache && !e.hasFVar then
+  if cfg.memoize && r.cache then
+    --trace[Meta.Tactic.simp.negativeCache] "cached {e} {repr e}=> {r.expr} {repr r.expr}"
     modify fun s => { s with cache := s.cache.insert e r , nonPassedCache := s.nonPassedCache.insert e r}
   return r
 
@@ -646,19 +647,39 @@ def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
     return { expr := e }
   go
 where
-  go : SimpM Result := do
+ go : SimpM Result := do
+  let cache := (← get).cache
+  let x := <- do
     modify fun s => {s with cacheHits := s.cacheHits.incrementSimpCalls}
     let cfg ← getConfig
     if cfg.memoize then
       let nonPassedCache := (← get).nonPassedCache
       if nonPassedCache.contains e then
         modify fun s => {s with cacheHits := s.cacheHits.incrementnonPassedCacheHit}
-      let cache := (← get).cache
+      let cache := (← get).nonPassedCache
       if let some result := cache.find? e then
         modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit}
         return result
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
     simpLoop e
+  if x.expr != e &&  cache.contains e then
+    if let some r := cache.find? e then
+     if r.expr != x.expr then
+      trace[Meta.Tactic.simp.negativeCache] "{repr e} {e} => {repr x.expr} {x.expr}"
+      for thms in (← getContext).simpTheorems do
+        let post := thms.post
+        let pre := thms.pre
+        let candidates ← pre.getMatchWithExtra e (getDtConfig (← getConfig))
+        let x := candidates.map fun x => x.fst
+        unless x.size == 0 do
+          trace[Meta.Tactic.simp.negativeCache] "{x}"
+          trace[Meta.Tactic.simp.negativeCache] "{<- x.mapM fun x => x.getValue}"
+        let candidates2 ← post.getMatchWithExtra e (getDtConfig (← getConfig))
+        let y := candidates2.map fun x => x.fst
+        unless y.size == 0 do
+          trace[Meta.Tactic.simp.negativeCache] "{y}"
+          trace[Meta.Tactic.simp.negativeCache] "{<- y.mapM fun y => y.getValue}"
+  return x
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
