@@ -659,21 +659,20 @@ where
   go : SimpM Result := do
     modify fun s => {s with cacheHits := s.cacheHits.incrementSimpCalls}
     let negativeCache := (<-get).negativeCache
-    if negativeCache.contains e then
-      let cache := (← get).cache
-      if cache.contains e then
-        modify fun s => {s with cacheHits := s.cacheHits.incrementBothCacheHit }
-      else
-         modify fun s => {s with cacheHits := s.cacheHits.incrementNegativeCacheHit }
-      return {expr := e}
     let cfg ← getConfig
     if cfg.memoize then
       let cache := (← get).cache
       if let some result := cache.find? e then
-        modify fun s => {s with cacheHits := s.cacheHits.incrementPositiveCacheHit}
+        if result.expr == e && negativeCache.contains e
+          then modify fun s => {s with cacheHits := s.cacheHits.incrementBothCacheHit }
+        else
+          modify fun s => {s with cacheHits := s.cacheHits.incrementPositiveCacheHit}
         return result
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
-    simpLoop e
+    let result := <- simpLoop e
+    if result.expr == e && negativeCache.contains e then
+       modify fun s => {s with cacheHits := s.cacheHits.incrementNegativeCacheHit }
+    return result
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
