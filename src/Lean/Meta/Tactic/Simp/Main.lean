@@ -812,13 +812,12 @@ def simpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray :=
     let mut toAssert := #[]
     let mut replaced := #[]
     let mut stats := stats
-    let mut cache := cache
     for fvarId in fvarIdsToSimp do
       let localDecl ← fvarId.getDecl
       let type ← instantiateMVars localDecl.type
       let ctx := { ctx with simpTheorems := ctx.simpTheorems.eraseTheorem (.fvar localDecl.fvarId) }
-      let (r, stats', cache') ← simp type ctx simprocs discharge? stats cache
-      stats := stats'; cache := cache'
+      let (r, stats', _) ← simp type ctx simprocs discharge? stats cache
+      stats := stats'
       match r.proof? with
       | some _ => match (← applySimpResultToProp mvarIdNew (mkFVar fvarId) type r) with
         | none => return (none, stats, cache)
@@ -833,8 +832,8 @@ def simpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray :=
         replaced := replaced.push fvarId
     if simplifyTarget then
       match (← simpTarget mvarIdNew ctx simprocs discharge? (stats := stats) (cache := cache)) with
-      | (none, stats', cache') => return (none, stats', cache')
-      | (some mvarIdNew', stats', cache') => mvarIdNew := mvarIdNew'; stats := stats'; cache := cache'
+      | (none, stats', _) => return (none, stats', cache)
+      | (some mvarIdNew', stats', _) => mvarIdNew := mvarIdNew'; stats := stats'
     let (fvarIdsNew, mvarIdNew') ← mvarIdNew.assertHypotheses toAssert
     mvarIdNew := mvarIdNew'
     let toClear := fvarIdsToSimp.filter fun fvarId => !replaced.contains fvarId

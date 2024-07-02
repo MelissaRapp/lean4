@@ -326,8 +326,10 @@ def getSimpCongrTheorems : SimpM SimpCongrTheorems :=
   -- Recall that `cache.map₁` should be used linearly but `cache.map₂` is great for copies.
   let savedMap₂   := (← get).cache.map₂
   let savedStage₁ := (← get).cache.stage₁
-  modify fun s => { s with cache := s.cache.switch }
-  try x finally modify fun s => { s with cache.map₂ := savedMap₂, cache.stage₁ := savedStage₁ }
+  let nPsavedMap₂   := (← get).nonPassedCache.map₂
+  let nPsavedStage₁ := (← get).nonPassedCache.stage₁
+  modify fun s => { s with cache := s.cache.switch, nonPassedCache := s.nonPassedCache.switch }
+  try x finally modify fun s => { s with cache.map₂ := savedMap₂, cache.stage₁ := savedStage₁, nonPassedCache.map₂ := nPsavedMap₂, nonPassedCache.stage₁ :=  nPsavedStage₁ }
 
 /--
 Save current cache, reset it, execute `x`, and then restore original cache.
