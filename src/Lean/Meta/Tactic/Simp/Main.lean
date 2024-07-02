@@ -653,13 +653,16 @@ where
       let nonPassedCache := (← get).nonPassedCache
       if cfg.memoize then
         if let some result := nonPassedCache.find? e then
-          modify fun s => {s with cacheHits := s.cacheHits.incrementnonPassedCacheHit}
-          if let some res2 := cache.find? e then if res2.expr == result.expr then modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit}
+          -- modify fun s => {s with cacheHits := s.cacheHits.incrementnonPassedCacheHit}
+          -- if let some res2 := cache.find? e then if res2.expr == result.expr then modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit}
+          modify fun s => {s with cacheHits := s.cacheHits.incrementnonPassedCacheHit (e != result.expr)}
+          if let some result2 := cache.find? e then
+          modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           return result
       trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
       let result := <- simpLoop e
-      if let some res2 := cache.find? e then if res2.expr == result.expr then
-        modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit}
+      if let some result2 := cache.find? e then
+          modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
       return result
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=

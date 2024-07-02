@@ -114,19 +114,30 @@ structure Diagnostics where
   deriving Inhabited
 
 structure CacheHits where
-  cacheHits : Float := 0
-  nonPassedCacheHits : Float := 0
+  cacheHitsPositiveCorrect : Float := 0
+  cacheHitsNegativeCorrect : Float := 0
+  cacheHitsPositiveIncorrect : Float := 0
+  cacheHitsNegativeIncorrect : Float := 0
+  nonPassedCacheHitsPositive : Float := 0
+  nonPassedCacheHitsNegative : Float := 0
   simpCalls : Float := 0
 
-@[inline] def CacheHits.incrementCacheHit (c : CacheHits) : CacheHits :=
-  {c with cacheHits := c.cacheHits + 1}
-@[inline] def CacheHits.incrementnonPassedCacheHit (c : CacheHits) : CacheHits :=
-  {c with nonPassedCacheHits := c.nonPassedCacheHits + 1}
+@[inline] def CacheHits.incrementCacheHit (c : CacheHits) (correct: Bool) (positive : Bool): CacheHits :=
+  match correct, positive with
+  | true, true => {c with cacheHitsPositiveCorrect := c.cacheHitsPositiveCorrect +1}
+  | true, false => {c with cacheHitsNegativeCorrect := c.cacheHitsNegativeCorrect +1}
+  | false, true => {c with cacheHitsPositiveIncorrect := c.cacheHitsPositiveIncorrect +1}
+  | false, false => {c with cacheHitsNegativeIncorrect := c.cacheHitsNegativeIncorrect+1}
+
+@[inline] def CacheHits.incrementnonPassedCacheHit (c : CacheHits) (positive: Bool) : CacheHits :=
+  match  positive with
+  | true => {c with nonPassedCacheHitsPositive := c.nonPassedCacheHitsPositive + 1}
+  | false => {c with nonPassedCacheHitsNegative := c.nonPassedCacheHitsNegative +1}
 @[inline] def CacheHits.incrementSimpCalls (c : CacheHits) : CacheHits :=
   {c with simpCalls := c.simpCalls + 1}
 
 @[inline] def CacheHits.mergeCacheHits (c1 c2: CacheHits) : CacheHits :=
-  {cacheHits :=  c1.cacheHits + c2.cacheHits, simpCalls := c1.simpCalls + c2.simpCalls, nonPassedCacheHits := c1.nonPassedCacheHits + c2.nonPassedCacheHits}
+  {cacheHitsPositiveCorrect :=  c1.cacheHitsPositiveCorrect + c2.cacheHitsPositiveCorrect, cacheHitsNegativeCorrect := c1.cacheHitsNegativeCorrect + c2.cacheHitsNegativeCorrect ,cacheHitsPositiveIncorrect := c1.cacheHitsPositiveIncorrect+c2.cacheHitsPositiveIncorrect , cacheHitsNegativeIncorrect := c1.cacheHitsNegativeIncorrect + c2.cacheHitsNegativeIncorrect,nonPassedCacheHitsPositive := c1.nonPassedCacheHitsPositive+c2.nonPassedCacheHitsPositive,nonPassedCacheHitsNegative := c1.nonPassedCacheHitsNegative+c2.nonPassedCacheHitsNegative ,simpCalls := c1.simpCalls + c2.simpCalls}
 
 structure State where
   cache         : Cache := {}
