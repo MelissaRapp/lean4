@@ -599,9 +599,145 @@ def simpStep (e : Expr) : SimpM Result := do
   | .mvar ..     => return { expr := (← instantiateMVars e) }
   | .fvar ..     => return { expr := (← reduceFVar (← getConfig) (← getSimpTheorems) e) }
 
+ def Lean.Expr.fvar' (name:Name) :=
+   Lean.Expr.fvar {name := name}
+
+def x : Array Expr := #[Lean.Expr.app
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.const `List.cons [Lean.Level.param `u_1])
+        (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 137308)))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 137593)))
+    (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 137594)),
+  Lean.Expr.app
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.app
+          (Lean.Expr.app
+            (Lean.Expr.app
+              (Lean.Expr.const `HAppend.hAppend [Lean.Level.param `u_1, Lean.Level.param `u_1, Lean.Level.param `u_1])
+              (Lean.Expr.app
+                (Lean.Expr.const `List [Lean.Level.param `u_1])
+                (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567))))
+            (Lean.Expr.app
+              (Lean.Expr.const `List [Lean.Level.param `u_1])
+              (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567))))
+          (Lean.Expr.app
+            (Lean.Expr.const `List [Lean.Level.param `u_1])
+            (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567))))
+        (Lean.Expr.app
+          (Lean.Expr.app
+            (Lean.Expr.const `instHAppendOfAppend [Lean.Level.param `u_1])
+            (Lean.Expr.app
+              (Lean.Expr.const `List [Lean.Level.param `u_1])
+              (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567))))
+          (Lean.Expr.app
+            (Lean.Expr.const `List.instAppend [Lean.Level.param `u_1])
+            (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567)))))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131568)))
+    (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131569)),
+  Lean.Expr.app
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.const `List.cons [Lean.Level.param `u_1])
+        (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567)))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132509)))
+    (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132510)),
+  Lean.Expr.app
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.const `List.cons [Lean.Level.param `u_1])
+        (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567)))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132509)))
+    (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132510)),
+  Lean.Expr.app
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.const `List.cons [Lean.Level.param `u_1])
+        (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567)))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132509)))
+    (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132510)),
+  Lean.Expr.app
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.const `List.cons [Lean.Level.param `u_1])
+        (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567)))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132541)))
+    (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132542)),
+  Lean.Expr.app
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.const `List.cons [Lean.Level.param `u_1])
+        (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 131567)))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132541)))
+    (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 132542)),
+  Lean.Expr.app
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.app
+          (Lean.Expr.app
+            (Lean.Expr.app
+              (Lean.Expr.const `HAppend.hAppend [Lean.Level.param `u_1, Lean.Level.param `u_1, Lean.Level.param `u_1])
+              (Lean.Expr.app
+                (Lean.Expr.const `List [Lean.Level.param `u_1])
+                (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 130074))))
+            (Lean.Expr.app
+              (Lean.Expr.const `List [Lean.Level.param `u_1])
+              (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 130074))))
+          (Lean.Expr.app
+            (Lean.Expr.const `List [Lean.Level.param `u_1])
+            (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 130074))))
+        (Lean.Expr.app
+          (Lean.Expr.app
+            (Lean.Expr.const `instHAppendOfAppend [Lean.Level.param `u_1])
+            (Lean.Expr.app
+              (Lean.Expr.const `List [Lean.Level.param `u_1])
+              (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 130074))))
+          (Lean.Expr.app
+            (Lean.Expr.const `List.instAppend [Lean.Level.param `u_1])
+            (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 130074)))))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 130075)))
+    (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 130076)),
+  Lean.Expr.app
+    (Lean.Expr.const `Not [])
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.app
+          (Lean.Expr.app
+            (Lean.Expr.app
+              (Lean.Expr.const `Membership.mem [Lean.Level.param `u_1, Lean.Level.param `u_1])
+              (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 15107)))
+            (Lean.Expr.app
+              (Lean.Expr.const `List [Lean.Level.param `u_1])
+              (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 15107))))
+          (Lean.Expr.app
+            (Lean.Expr.const `List.instMembership [Lean.Level.param `u_1])
+            (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 15107))))
+        (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 15108)))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 15110))),
+  Lean.Expr.app
+    (Lean.Expr.const `Not [])
+    (Lean.Expr.app
+      (Lean.Expr.app
+        (Lean.Expr.app
+          (Lean.Expr.app
+            (Lean.Expr.app
+              (Lean.Expr.const `Membership.mem [Lean.Level.param `u_1, Lean.Level.param `u_1])
+              (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 14656)))
+            (Lean.Expr.app
+              (Lean.Expr.const `List [Lean.Level.param `u_1])
+              (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 14656))))
+          (Lean.Expr.app
+            (Lean.Expr.const `List.instMembership [Lean.Level.param `u_1])
+            (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 14656))))
+        (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 14657)))
+      (Lean.Expr.fvar' (Lean.Name.mkNum `_uniq 14659)))]
+
 def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
   if cfg.memoize && r.cache then
-    modify fun s => { s with cache := s.cache.insert e r , nonPassedCache := s.nonPassedCache.insert e r}
+    modify fun s => { s with nonPassedCache := s.nonPassedCache.insert e r}
+    if !x.contains e then
+    modify fun s => { s with cache := s.cache.insert e r }
   return r
 
 partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do
@@ -639,6 +775,19 @@ where
       return <- cacheResult e cfg r
     cacheResult e cfg r
 
+@[inline] def hasAnyFVarM {m : Type → Type w} [Monad m] (e : Expr) (p : FVarId → m Bool) : m Bool := do
+  let rec @[specialize] visit (e : Expr) :=  if !e.hasFVar then pure false else
+    do match e with
+    | Expr.forallE _ d b _   => pure ((<- visit d) || (<- visit b))
+    | Expr.lam _ d b _       => pure ((<- visit d) || (<- visit b))
+    | Expr.mdata _ e         => visit e
+    | Expr.letE _ t v b _    => pure ((<-visit t) || (<-visit v) || (<-visit b))
+    | Expr.app f a           => pure ((<-visit f) || (<-visit a))
+    | Expr.proj _ _ e        => visit e
+    | Expr.fvar fvarId       => p fvarId
+    | _                      => pure false
+  visit e
+
 @[export lean_simp]
 def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
   checkSystem "simp"
@@ -659,11 +808,29 @@ where
           if let some result2 := cache.find? e then
           modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           return result
+        --TODO why doesn't it work with only newThms added by simpAll?
+        if let some result := cache.find? e then
+          let a :=  <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
+          let b := <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
+          let c := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
+          let d := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
+          unless result.expr != e || a || b || c || d do
+          return result
       trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
-      let result := <- simpLoop e
-      if let some result2 := cache.find? e then
-          modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
-      return result
+      simpLoop e
+      -- let result := <- simpLoop e
+      -- if let some result2 := cache.find? e then
+      --     let a :=  <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
+      --     let b := <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
+      --     let c := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
+      --     let d := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
+      --     unless a ||  c || x.contains e  do
+      --     modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
+      --     if result2.expr != result.expr && e != result.expr && result2.expr == e then
+      --     trace[Meta.Tactic.simp.negativeCache] "{e} => {result.expr} not {result2.expr}"
+      --     trace[Meta.Tactic.simp.negativeCache] "{repr e} => {repr result.expr} not {repr result2.expr}"
+      --     modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
+      -- return result
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x

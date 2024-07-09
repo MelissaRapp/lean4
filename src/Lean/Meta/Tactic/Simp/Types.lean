@@ -121,6 +121,7 @@ structure CacheHits where
   nonPassedCacheHitsPositive : Float := 0
   nonPassedCacheHitsNegative : Float := 0
   simpCalls : Float := 0
+  wrong: Array Expr := {}
 
 @[inline] def CacheHits.incrementCacheHit (c : CacheHits) (correct: Bool) (positive : Bool): CacheHits :=
   match correct, positive with
@@ -136,8 +137,10 @@ structure CacheHits where
 @[inline] def CacheHits.incrementSimpCalls (c : CacheHits) : CacheHits :=
   {c with simpCalls := c.simpCalls + 1}
 
+@[inline] def CacheHits.addWrong (c : CacheHits) ( e : Expr) : CacheHits :=
+  {c with wrong := c.wrong.push e}
 @[inline] def CacheHits.mergeCacheHits (c1 c2: CacheHits) : CacheHits :=
-  {cacheHitsPositiveCorrect :=  c1.cacheHitsPositiveCorrect + c2.cacheHitsPositiveCorrect, cacheHitsNegativeCorrect := c1.cacheHitsNegativeCorrect + c2.cacheHitsNegativeCorrect ,cacheHitsPositiveIncorrect := c1.cacheHitsPositiveIncorrect+c2.cacheHitsPositiveIncorrect , cacheHitsNegativeIncorrect := c1.cacheHitsNegativeIncorrect + c2.cacheHitsNegativeIncorrect,nonPassedCacheHitsPositive := c1.nonPassedCacheHitsPositive+c2.nonPassedCacheHitsPositive,nonPassedCacheHitsNegative := c1.nonPassedCacheHitsNegative+c2.nonPassedCacheHitsNegative ,simpCalls := c1.simpCalls + c2.simpCalls}
+  {cacheHitsPositiveCorrect :=  c1.cacheHitsPositiveCorrect + c2.cacheHitsPositiveCorrect, cacheHitsNegativeCorrect := c1.cacheHitsNegativeCorrect + c2.cacheHitsNegativeCorrect ,cacheHitsPositiveIncorrect := c1.cacheHitsPositiveIncorrect+c2.cacheHitsPositiveIncorrect , cacheHitsNegativeIncorrect := c1.cacheHitsNegativeIncorrect + c2.cacheHitsNegativeIncorrect,nonPassedCacheHitsPositive := c1.nonPassedCacheHitsPositive+c2.nonPassedCacheHitsPositive,nonPassedCacheHitsNegative := c1.nonPassedCacheHitsNegative+c2.nonPassedCacheHitsNegative ,simpCalls := c1.simpCalls + c2.simpCalls, wrong := c1.wrong.append c2.wrong}
 
 structure State where
   cache         : Cache := {}
@@ -147,6 +150,7 @@ structure State where
   numSteps      : Nat := 0
   cacheHits     : CacheHits := {}
   diag          : Diagnostics := {}
+  newThms       : SimpTheoremsArray := {}
 
 structure Stats where
   usedTheorems : UsedSimps := {}
@@ -169,7 +173,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { nonPassedCache, cache, congrCache, usedTheorems, numSteps,  cacheHits, diag } => { nonPassedCache ,cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag }
+    modify fun { newThms,nonPassedCache, cache, congrCache, usedTheorems, numSteps,  cacheHits, diag } => { newThms, nonPassedCache ,cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
