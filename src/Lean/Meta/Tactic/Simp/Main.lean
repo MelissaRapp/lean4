@@ -736,7 +736,7 @@ def x : Array Expr := #[Lean.Expr.app
 def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
   if cfg.memoize && r.cache then
     modify fun s => { s with nonPassedCache := s.nonPassedCache.insert e r}
-    if !x.contains e then
+    --if !x.contains e then
     modify fun s => { s with cache := s.cache.insert e r }
   return r
 
@@ -808,29 +808,18 @@ where
           if let some result2 := cache.find? e then
           modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           return result
-        --TODO why doesn't it work with only newThms added by simpAll?
-        if let some result := cache.find? e then
+      trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
+      let result := <- simpLoop e
+      if let some result2 := cache.find? e then
           let a :=  <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
           let b := <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
           let c := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
           let d := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
-          unless result.expr != e || a || b || c || d do
-          return result
-      trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
-      simpLoop e
-      -- let result := <- simpLoop e
-      -- if let some result2 := cache.find? e then
-      --     let a :=  <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
-      --     let b := <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
-      --     let c := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
-      --     let d := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
-      --     unless a ||  c || x.contains e  do
-      --     modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
-      --     if result2.expr != result.expr && e != result.expr && result2.expr == e then
-      --     trace[Meta.Tactic.simp.negativeCache] "{e} => {result.expr} not {result2.expr}"
-      --     trace[Meta.Tactic.simp.negativeCache] "{repr e} => {repr result.expr} not {repr result2.expr}"
-      --     modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
-      -- return result
+          unless a   do
+          modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
+          if result2.expr != result.expr && e != result.expr && result2.expr == e then
+          modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
+      return result
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
