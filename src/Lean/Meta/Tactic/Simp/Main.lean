@@ -808,19 +808,17 @@ where
           if let some result2 := cache.find? e then
           modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           return result
-      trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
-      let result := <- simpLoop e
-      if let some result2 := cache.find? e then
+        if let some result2 := cache.find? e then
           let newThms := (<-get).newThms
           let a :=  <- newThms.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
           let b := <- newThms.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
           let c := <- hasAnyFVarM e (fun f => do newThms.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
           let d := <- hasAnyFVarM e (fun f => do newThms.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
-          unless a   do
-          modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
-          if result2.expr != result.expr && e != result.expr && result2.expr == e then
-          modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
-      return result
+          unless e != result2.expr || a  || c do
+            return result2
+      trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
+      simpLoop e
+
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
