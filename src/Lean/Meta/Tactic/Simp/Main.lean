@@ -808,14 +808,27 @@ where
           if let some result2 := cache.find? e then
           modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           return result
+        if let some result2 := cache.find? e then
+          let a :=  <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
+          let a2 := e.getAppFn.isConstOf `Not && (e.getArgD 0 (Expr.lit (.strVal ""))).isApp &&(<- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra (e.getArgD 0 (Expr.lit (.strVal ""))) (getDtConfig (<-getConfig)))).size > 0))
+          let b := <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
+          let c := <- hasAnyFVarM e (fun f => do  let x := <- f.findDecl? if let some y := x then  (<-getContext).simpTheorems.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (y.toExpr) (getDtConfig (<-getConfig)))).size > 0) else pure false)
+          let c2 := <- hasAnyFVarM e (fun f => do  (<-getContext).simpTheorems.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0) )
+          let c3 := <- hasAnyFVarM e (fun f => do  let x := <- f.getValue? if let some y := x then  (<-getContext).simpTheorems.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (y) (getDtConfig (<-getConfig)))).size > 0) else pure false)
+          let d := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
+          unless result2.expr != e || a ||a2||  c || c2 || c3 do
+          return result2
       trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
       let result := <- simpLoop e
       if let some result2 := cache.find? e then
           let a :=  <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
+          let a2 := e.getAppFn.isConstOf `Not && (<- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra (e.getArgD 0 (Expr.lit (.strVal ""))) (getDtConfig (<-getConfig)))).size > 0))
           let b := <- (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra e (getDtConfig (<-getConfig)))).size > 0)
-          let c := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.post.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
+          let c := <- hasAnyFVarM e (fun f => do  let x := <- f.findDecl? if let some y := x then  (<-getContext).simpTheorems.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (y.toExpr) (getDtConfig (<-getConfig)))).size > 0) else pure false)
+          let c2 := <- hasAnyFVarM e (fun f => do  (<-getContext).simpTheorems.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0) )
+          let c3 := <- hasAnyFVarM e (fun f => do  let x := <- f.getValue? if let some y := x then  (<-getContext).simpTheorems.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (y) (getDtConfig (<-getConfig)))).size > 0) else pure false)
           let d := <- hasAnyFVarM e (fun f => do (<-getContext).simpTheorems.anyM (fun thm => do return (<- (thm.pre.getMatchWithExtra (<- f.getType) (getDtConfig (<-getConfig)))).size > 0))
-          unless a   do
+          unless a ||a2||  c || c2 || c3 do
           modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           if result2.expr != result.expr && e != result.expr && result2.expr == e then
           modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
