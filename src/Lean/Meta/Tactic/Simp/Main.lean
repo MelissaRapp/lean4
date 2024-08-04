@@ -629,10 +629,10 @@ where
       visitPost cfg r
   visitPost (cfg : Config) (r : Result) : SimpM Result := do
     match (← post r.expr) with
-    | .done r' => do
+    | (.done r', c) => do
     cacheResult e cfg (← r.mkEqTrans r')
-    | .continue none => visitPostContinue cfg r
-    | .visit r' | .continue (some r') => visitPostContinue cfg (← r.mkEqTrans r')
+    | (.continue none, c) => visitPostContinue cfg r
+    | (.visit r',c) | (.continue (some r'),c) => visitPostContinue cfg (← r.mkEqTrans r')
   visitPostContinue (cfg : Config) (r : Result) : SimpM Result := do
     let mut r := r
     unless cfg.singlePass || e == r.expr do

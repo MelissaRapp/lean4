@@ -133,6 +133,33 @@ def isRflProof (proof : Expr) : MetaM Bool := do
   else
     isRflProofCore (← inferType proof) proof
 
+--TODO is this correct way of getting conditional theorems?
+mutual
+  partial def isCondTheoremCore (type : Expr) : CoreM Bool := do
+    match type with
+    | .forallE _ _ t _ => return t.hasLooseBVars
+    | _ => return false
+
+
+  partial def isCondTheorem (declName : Name) : CoreM Bool := do
+    let .thmInfo info ← getConstInfo declName | return false
+    isCondTheoremCore info.type
+end
+
+def isCondProof (proof : Expr) : MetaM Bool := do
+  if let .const declName .. := proof then
+    isCondTheorem declName
+  else
+    isCondTheoremCore (← inferType proof)
+
+--TODO is this correct way of getting a conditional theorems preCondition?
+def getCond (proof : Expr) : MetaM Expr := do
+  if let .const declName .. := proof then
+    let .thmInfo info ← getConstInfo declName | panic "not a thm"
+    return info.type.bindingDomain!
+  else
+    return (← inferType proof).bindingDomain!
+
 instance : ToFormat SimpTheorem where
   format s :=
     let perm := if s.perm then ":perm" else ""

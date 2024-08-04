@@ -297,6 +297,26 @@ def SimprocsArray.erase (ss : SimprocsArray) (declName : Name) : SimprocsArray :
 def SimprocsArray.isErased (ss : SimprocsArray) (declName : Name) : Bool :=
   ss.any fun s => s.erased.contains declName
 
+def simprocArrayCoreCond (post : Bool) (ss : SimprocsArray) (e : Expr) (c : Option (HashSet Expr)): SimpM (Step × Option (HashSet Expr)):= do
+  let mut found := false
+  let mut e  := e
+  let mut proof? : Option Expr := none
+  let mut cache := true
+  for s in ss do
+    match (← simprocCore (post := post) (if post then s.post else s.pre) s.erased e) with
+    | .visit r => return (.visit (← mkEqTransOptProofResult proof? cache r), c)
+    | .done r =>  return (.done (← mkEqTransOptProofResult proof? cache r), c)
+    | .continue none => pure ()
+    | .continue (some r) =>
+      e := r.expr
+      proof? ← mkEqTrans? proof? r.proof?
+      cache := cache && r.cache
+      found := true
+  if found then
+    return (.continue (some { expr := e, proof? }), c)
+  else
+    return (.continue, c)
+
 def simprocArrayCore (post : Bool) (ss : SimprocsArray) (e : Expr) : SimpM Step := do
   let mut found := false
   let mut e  := e
@@ -343,9 +363,9 @@ def userPreSimprocs (s : SimprocsArray) : Simproc := fun e => do
   unless simprocs.get (← getOptions) do return .continue
   simprocArrayCore (post := false) s e
 
-def userPostSimprocs (s : SimprocsArray) : Simproc := fun e => do
-  unless simprocs.get (← getOptions) do return .continue
-  simprocArrayCore (post := true) s e
+def userPostSimprocs (s : SimprocsArray) : SimprocCond := fun (e, c) => do
+  unless simprocs.get (← getOptions) do return (.continue, c)
+  simprocArrayCoreCond (post := true) s e c
 
 def userPreDSimprocs (s : SimprocsArray) : DSimproc := fun e => do
   unless simprocs.get (← getOptions) do return .continue

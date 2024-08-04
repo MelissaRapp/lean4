@@ -13,6 +13,7 @@ import Lean.Meta.Tactic.UnifyEq
 import Lean.Meta.Tactic.Simp.Types
 import Lean.Meta.Tactic.LinearArith.Simp
 import Lean.Meta.Tactic.Simp.Simproc
+import Lean.Meta.Tactic.Simp.SimpTheorems
 import Lean.Meta.Tactic.Simp.Attr
 
 namespace Lean.Meta.Simp
@@ -205,18 +206,36 @@ where
   inErasedSet (thm : SimpTheorem) : Bool :=
     erased.contains thm.origin
 
-def simpCtorEq : Simproc := fun e => withReducibleAndInstances do
+def rewriteCond? (e : Expr) (s : SimpTheoremTree) (erased : PHashSet Origin) (tag : String) (rflOnly : Bool) : SimpM (Option Result × Option (Array Expr)) := do
+  let candidates ← s.getMatchWithExtra e (getDtConfig (← getConfig))
+  if candidates.isEmpty then
+    trace[Debug.Meta.Tactic.simp] "no theorems found for {tag}-rewriting {e}"
+    return (none, none)
+  else
+    let candidates := candidates.insertionSort fun e₁ e₂ => e₁.1.priority > e₂.1.priority
+    for (thm, numExtraArgs) in candidates do
+      unless inErasedSet thm || (rflOnly && !thm.rfl) do
+        if let some result ← tryTheoremWithExtraArgs? e thm numExtraArgs then
+          trace[Debug.Meta.Tactic.simp] "rewrite result {e} => {result.expr}"
+          return (some result, none)
+    let condThms := <- candidates.filterM fun c => isCondProof c.fst.proof
+    return (none, some (<- condThms.mapM fun cThm => getCond cThm.fst.proof))
+where
+  inErasedSet (thm : SimpTheorem) : Bool :=
+    erased.contains thm.origin
+
+def simpCtorEq : SimprocCond := fun (e, c) => withReducibleAndInstances do
   match e.eq? with
-  | none => return .continue
+  | none => return (.continue, c)
   | some (_, lhs, rhs) =>
     match (← constructorApp'? lhs), (← constructorApp'? rhs) with
     | some (c₁, _), some (c₂, _) =>
       if c₁.name != c₂.name then
         withLocalDeclD `h e fun h =>
-          return .done { expr := mkConst ``False, proof? := (← withDefault <| mkEqFalse' (← mkLambdaFVars #[h] (← mkNoConfusion (mkConst ``False) h))) }
+          return (.done { expr := mkConst ``False, proof? := (← withDefault <| mkEqFalse' (← mkLambdaFVars #[h] (← mkNoConfusion (mkConst ``False) h))) }, c)
       else
-        return .continue
-    | _, _ => return .continue
+        return (.continue, c)
+    | _, _ => return (.continue, c)
 
 @[inline] def simpUsingDecide : Simproc := fun e => do
   unless (← getConfig).decide do
@@ -235,22 +254,40 @@ def simpCtorEq : Simproc := fun e => withReducibleAndInstances do
   catch _ =>
     return .continue
 
-def simpArith (e : Expr) : SimpM Step := do
+@[inline] def simpUsingDecideCond : SimprocCond := fun (e, c) => do
+  unless (← getConfig).decide do
+    return (.continue, c)
+  if e.hasFVar || e.hasMVar || e.isTrue || e.isFalse then
+    return (.continue, c)
+  try
+    let d ← mkDecide e
+    let r ← withDefault <| whnf d
+    if r.isConstOf ``true then
+      return (.done { expr := mkConst ``True, proof? := mkAppN (mkConst ``eq_true_of_decide) #[e, d.appArg!, (← mkEqRefl (mkConst ``true))] }, c)
+    else if r.isConstOf ``false then
+      return (.done { expr := mkConst ``False, proof? := mkAppN (mkConst ``eq_false_of_decide) #[e, d.appArg!, (← mkEqRefl (mkConst ``false))] }, c)
+    else
+      return (.continue, c)
+  catch _ =>
+    return (.continue, c)
+
+def simpArith (e : Expr × Option (HashSet Expr))  : SimpM (Step × Option (HashSet Expr)) := do
+  let (e, c) :=  e
   unless (← getConfig).arith do
-    return .continue
+    return (.continue, c)
   if Linear.isLinearCnstr e then
     let some (e', h) ← Linear.Nat.simpCnstr? e
-      | return .continue
-    return .visit { expr := e', proof? := h }
+      | return (.continue, c)
+    return (.visit { expr := e', proof? := h }, c)
   else if Linear.isLinearTerm e then
     if Linear.parentIsTarget (← getContext).parent? then
       -- We mark `cache := false` to ensure we do not miss simplifications.
-      return .continue (some { expr := e, cache := false })
+      return (.continue (some { expr := e, cache := false }), c)
     let some (e', h) ← Linear.Nat.simpExpr? e
-      | return .continue
-    return .visit { expr := e', proof? := h }
+      | return (.continue, c)
+    return (.visit { expr := e', proof? := h }, c)
   else
-    return .continue
+    return (.continue, c)
 
 /--
 Given a match-application `e` with `MatcherInfo` `info`, return `some result`
@@ -315,11 +352,22 @@ def rewritePre (rflOnly := false) : Simproc := fun e => do
       return .visit r
   return .continue
 
-def rewritePost (rflOnly := false) : Simproc := fun e => do
+-- def rewritePost (rflOnly := false) : Simproc := fun e => do
+--   for thms in (← getContext).simpTheorems do
+--     if let some r ← rewrite? e thms.post thms.erased (tag := "post") (rflOnly := rflOnly) then
+--       return .visit r
+--   return .continue
+
+def rewritePost (rflOnly := false) : SimprocCond := fun (e, _) => do
+  let mut condOptions : HashSet Expr := {}
   for thms in (← getContext).simpTheorems do
-    if let some r ← rewrite? e thms.post thms.erased (tag := "post") (rflOnly := rflOnly) then
-      return .visit r
-  return .continue
+    let (r, c) ← rewriteCond? e thms.post thms.erased (tag := "post") (rflOnly := rflOnly)
+    if let some r' := r  then
+      return (.visit r', none)
+    else if let some c' := c then
+      condOptions := condOptions.insertMany c'
+  return (.continue, some condOptions)
+
 
 def drewritePre : DSimproc := fun e => do
   for thms in (← getContext).simpTheorems do
@@ -357,43 +405,43 @@ def dischargeGround (e : Expr) : SimpM (Option Expr) := do
 /--
 Try to unfold ground term in the ground/symbolic evaluator.
 -/
-def sevalGround : Simproc := fun e => do
+def sevalGround : SimprocCond := fun (e, c) => do
   -- `e` is not a ground term.
-  unless !e.hasExprMVar && !e.hasFVar do return .continue
+  unless !e.hasExprMVar && !e.hasFVar do return (.continue,c)
   -- Check whether `e` is a constant application
   let f := e.getAppFn
-  let .const declName lvls := f | return .continue
+  let .const declName lvls := f | return (.continue, c)
   -- If declaration has been marked to not be unfolded, return none.
   let ctx ← getContext
-  if ctx.simpTheorems.isErased (.decl declName) then return .continue
+  if ctx.simpTheorems.isErased (.decl declName) then return (.continue,c)
   -- Matcher applications should have been reduced before we get here.
-  if (← isMatcher declName) then return .continue
+  if (← isMatcher declName) then return (.continue,c)
   if let some eqns ← withDefault <| getEqnsFor? declName then
     -- `declName` has equation theorems associated with it.
     for eqn in eqns do
       -- TODO: cache SimpTheorem to avoid calls to `isRflTheorem`
       if let some result ← Simp.tryTheorem? e { origin := .decl eqn, proof := mkConst eqn, rfl := (← isRflTheorem eqn) } then
         trace[Meta.Tactic.simp.ground] "unfolded, {e} => {result.expr}"
-        return .visit result
-    return .continue
+        return (.visit result, c)
+    return (.continue,c)
   -- `declName` does not have equation theorems associated with it.
   if e.isConst then
     -- We don't unfold constants that take arguments
     if let .forallE .. ← whnfD (← inferType e) then
-      return .continue
+      return (.continue,c)
   let info ← getConstInfo declName
-  unless info.hasValue && info.levelParams.length == lvls.length do return .continue
+  unless info.hasValue && info.levelParams.length == lvls.length do return (.continue,c)
   let fBody ← instantiateValueLevelParams info lvls
   let eNew := fBody.betaRev e.getAppRevArgs (useZeta := true)
   trace[Meta.Tactic.simp.ground] "delta, {e} => {eNew}"
-  return .visit { expr := eNew }
+  return (.visit { expr := eNew },c)
 
 partial def preSEval (s : SimprocsArray) : Simproc :=
   rewritePre >>
   simpMatch >>
   userPreSimprocs s
 
-def postSEval (s : SimprocsArray) : Simproc :=
+def postSEval (s : SimprocsArray) : SimprocCond :=
   rewritePost >>
   userPostSimprocs s >>
   sevalGround >>
@@ -435,24 +483,24 @@ def seval (e : Expr) : SimpM Result := do
 /--
 Try to unfold ground term in the ground/symbolic evaluator.
 -/
-def simpGround : Simproc := fun e => do
+def simpGround : SimprocCond := fun (e,c) => do
   -- Ground term unfolding is disabled.
-  unless (← getConfig).ground do return .continue
+  unless (← getConfig).ground do return (.continue,c)
   -- `e` is not a ground term.
-  unless !e.hasExprMVar && !e.hasFVar do return .continue
+  unless !e.hasExprMVar && !e.hasFVar do return (.continue,c)
   -- Check whether `e` is a constant application
   let f := e.getAppFn
-  let .const declName _ := f | return .continue
+  let .const declName _ := f | return (.continue,c)
   -- If declaration has been marked to not be unfolded, return none.
   let ctx ← getContext
-  if ctx.simpTheorems.isErased (.decl declName) then return .continue
+  if ctx.simpTheorems.isErased (.decl declName) then return (.continue,c)
   -- Matcher applications should have been reduced before we get here.
-  if (← isMatcher declName) then return .continue
+  if (← isMatcher declName) then return (.continue,c)
   let r ← withTraceNode `Meta.Tactic.simp.ground (fun
       | .ok r => return m!"seval: {e} => {r.expr}"
       | .error err => return m!"seval: {e} => {err.toMessageData}") do
     seval e
-  return .done r
+  return (.done r,c)
 
 def preDefault (s : SimprocsArray) : Simproc :=
   rewritePre >>
@@ -460,13 +508,13 @@ def preDefault (s : SimprocsArray) : Simproc :=
   userPreSimprocs s >>
   simpUsingDecide
 
-def postDefault (s : SimprocsArray) : Simproc :=
+def postDefault (s : SimprocsArray) : SimprocCond :=
   rewritePost >>
   userPostSimprocs s >>
   simpGround >>
   simpArith >>
   simpCtorEq >>
-  simpUsingDecide
+  simpUsingDecideCond
 
 /--
   Return true if `e` is of the form `(x : α) → ... → s = t → ... → False`

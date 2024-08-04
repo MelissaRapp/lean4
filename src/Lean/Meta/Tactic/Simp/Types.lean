@@ -206,6 +206,7 @@ A simplification procedure. Recall that we have `pre` and `post` procedures.
 See `Step`.
 -/
 abbrev Simproc := Expr → SimpM Step
+abbrev SimprocCond := (Expr × Option (HashSet Expr)) → SimpM (Step × Option (HashSet Expr))
 
 abbrev DStep := TransformStep
 
@@ -220,6 +221,14 @@ def _root_.Lean.TransformStep.toStep (s : TransformStep) : Step :=
   | .visit e           => .visit { expr := e }
   | .continue (some e) => .continue (some { expr := e })
   | .continue none     => .continue none
+
+--TODO correct?
+def mkEqTransResultStepCond (r : Result) (s : (Step × Option (HashSet Expr))) : MetaM (Step × Option (HashSet Expr)) :=
+  match s with
+  | (.done r' , c)           => return (.done (← mkEqTransOptProofResult r.proof? r.cache r'), c)
+  | (.visit r', c)           => return (.visit (← mkEqTransOptProofResult r.proof? r.cache r'), c)
+  | (.continue none, c)      => return (.continue r, c)
+  | (.continue (some r'), c)  => return (.continue (some (← mkEqTransOptProofResult r.proof? r.cache r')), c)
 
 def mkEqTransResultStep (r : Result) (s : Step) : MetaM Step :=
   match s with
@@ -245,6 +254,18 @@ def andThen (f g : Simproc) : Simproc := fun e => do
 
 instance : AndThen Simproc where
   andThen s₁ s₂ := andThen s₁ (s₂ ())
+
+--TODO correct?
+@[always_inline]
+def andThenC (f g : SimprocCond) : SimprocCond := fun (e, c) => do
+  match (← f (e, c)) with
+  | (.done r, c)            => return (.done r, c)
+  | (.continue none, c)     => g (e,c)
+  | (.continue (some r),c)  => mkEqTransResultStepCond r (← g (r.expr, c))
+  | (.visit r, c)           => return (.visit r, c)
+
+instance : AndThen SimprocCond where
+  andThen s₁ s₂ := andThenC s₁ (s₂ ())
 
 @[always_inline]
 def dandThen (f g : DSimproc) : DSimproc := fun e => do
@@ -288,7 +309,7 @@ structure Simprocs where
 
 structure Methods where
   pre        : Simproc  := fun _ => return .continue
-  post       : Simproc  := fun e => return .done { expr := e }
+  post       : SimprocCond := fun (e, _) => return (.done { expr := e }, none)
   dpre       : DSimproc := fun _ => return .continue
   dpost      : DSimproc := fun e => return .done e
   discharge? : Expr → SimpM (Option Expr) := fun _ => return none
@@ -319,8 +340,8 @@ def getMethods : SimpM Methods :=
 def pre (e : Expr) : SimpM Step := do
   (← getMethods).pre e
 
-def post (e : Expr) : SimpM Step := do
-  (← getMethods).post e
+def post (e : Expr) : SimpM (Step × Option (HashSet Expr)) := do
+  (← getMethods).post (e, none)
 
 @[inline] def getContext : SimpM Context :=
   readThe Context
