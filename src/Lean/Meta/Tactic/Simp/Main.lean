@@ -660,9 +660,10 @@ where
            modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           return result
         if let some result2 := cache.find? e then
-          let recheckNeeded := (<- e.findM? (fun f => do if f.hasLooseBVars then  return false else (<-getContext).simpTheorems.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig)))).size > 0 || ((<- (thm.pre.getMatchWithExtra (f) (getDtConfig (<-getConfig)))).size > 0)))).isSome
-          unless result2.expr != e || recheckNeeded do
-          return result2
+          unless result2.expr != e do
+            -- TODO deactivate procedures other than rewrite and check performance again
+            let resimpedResult := (<- simpLoop e)
+            return resimpedResult
       trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
       simpLoop e
 
