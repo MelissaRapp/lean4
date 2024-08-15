@@ -190,12 +190,12 @@ def derive (e : Expr) : MetaM Simp.Result := do
 
   -- step 1: pre-processing of numerals
   let r ← withTrace "pre-processing numerals" do
-    let post e := return Simp.Step.done (← try numeralToCoe e catch _ => pure {expr := e})
+    let post e := return (Simp.Step.done (← try numeralToCoe e.fst catch _ => pure {expr := e.fst}), none)
     r.mkEqTrans (← Simp.main r.expr { config, congrTheorems } (methods := { post })).1
 
   -- step 2: casts are moved upwards and eliminated
   let r ← withTrace "moving upward, splitting and eliminating" do
-    let post := upwardAndElim (← normCastExt.up.getTheorems)
+    let post e := return (<- upwardAndElim (← normCastExt.up.getTheorems) e.fst, none)
     r.mkEqTrans (← Simp.main r.expr { config, congrTheorems } (methods := { post })).1
 
   -- step 3: casts are squashed

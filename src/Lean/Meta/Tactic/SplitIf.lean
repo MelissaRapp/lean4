@@ -51,8 +51,8 @@ private def discharge? (numIndices : Nat) (useDecide : Bool) : Simp.Discharge :=
       let d ← mkDecide prop
       let r ← withDefault <| whnf d
       if r.isConstOf ``true then
-        return some <| mkApp3 (mkConst ``of_decide_eq_true) prop d.appArg! (← mkEqRefl (mkConst ``true))
-  (← getLCtx).findDeclRevM? fun localDecl => do
+        return (some <| mkApp3 (mkConst ``of_decide_eq_true) prop d.appArg! (← mkEqRefl (mkConst ``true)), none)
+  let x := <- (← getLCtx).findDeclRevM? fun localDecl => do
      if localDecl.index ≥ numIndices || localDecl.isAuxDecl then
        return none
      else if (← isDefEq prop localDecl.type) then
@@ -64,6 +64,7 @@ private def discharge? (numIndices : Nat) (useDecide : Bool) : Simp.Discharge :=
            return some (mkApp2 (mkConst ``not_not_intro) arg localDecl.toExpr)
          else
            return none
+  return (x, none)
 
 def mkDischarge? (useDecide := false) : MetaM Simp.Discharge :=
   return discharge? (← getLCtx).numIndices useDecide

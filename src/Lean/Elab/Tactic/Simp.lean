@@ -57,7 +57,7 @@ def tacticToDischarge (tacticCode : Syntax) : TacticM (IO.Ref Term.State × Simp
         return none
     let (result?, s) ← liftM (m := MetaM) <| Term.TermElabM.run runTac? ctx s
     ref.set s
-    return result?
+    return (result?, none)
   return (ref, disch)
 
 inductive Simp.DischargeWrapper where

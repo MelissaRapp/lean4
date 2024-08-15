@@ -297,7 +297,7 @@ def SimprocsArray.erase (ss : SimprocsArray) (declName : Name) : SimprocsArray :
 def SimprocsArray.isErased (ss : SimprocsArray) (declName : Name) : Bool :=
   ss.any fun s => s.erased.contains declName
 
-def simprocArrayCoreCond (post : Bool) (ss : SimprocsArray) (e : Expr) (c : Option (HashSet Expr)): SimpM (Step × Option (HashSet Expr)):= do
+def simprocArrayCoreCond (post : Bool) (ss : SimprocsArray) (e : Expr) (c : Option (Array (Expr))): SimpM (Step × Option (Array (Expr))):= do
   let mut found := false
   let mut e  := e
   let mut proof? : Option Expr := none

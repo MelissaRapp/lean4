@@ -152,8 +152,7 @@ def isCondProof (proof : Expr) : MetaM Bool := do
   else
     isCondTheoremCore (← inferType proof)
 
---TODO is this correct way of getting a conditional theorems preCondition?
-def getCond (proof : Expr) : MetaM Expr := do
+def getCondDomain (proof : Expr) : MetaM Expr := do
   if let .const declName .. := proof then
     let .thmInfo info ← getConstInfo declName | panic "not a thm"
     return info.type.bindingDomain!

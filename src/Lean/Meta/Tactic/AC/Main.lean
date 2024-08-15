@@ -153,24 +153,24 @@ def rewriteUnnormalized (mvarId : MVarId) : MetaM Unit := do
   let newGoal ← applySimpResultToTarget mvarId tgt res
   newGoal.refl
 where
-  post (e : Expr) : SimpM Simp.Step := do
+  post (e : Expr × Option (Array (Expr))) : SimpM (Simp.Step × Option (Array (Expr))) := do
     let ctx ← Simp.getContext
     match e, ctx.parent? with
-    | bin op₁ l r, some (bin op₂ _ _) =>
+    | (bin op₁ l r, _), some (bin op₂ _ _) =>
       if ←isDefEq op₁ op₂ then
-        return Simp.Step.done { expr := e }
+        return (Simp.Step.done { expr := e.fst }, none)
       match ←preContext op₁ with
       | some pc =>
         let (proof, newTgt) ← buildNormProof pc l r
-        return Simp.Step.done { expr := newTgt, proof? := proof }
-      | none => return Simp.Step.done { expr := e }
-    | bin op l r, _ =>
+        return (Simp.Step.done { expr := newTgt, proof? := proof }, none)
+      | none => return (Simp.Step.done { expr := e.fst }, none)
+    | (bin op l r, _), _ =>
       match ←preContext op with
       | some pc =>
         let (proof, newTgt) ← buildNormProof pc l r
-        return Simp.Step.done { expr := newTgt, proof? := proof }
-      | none => return Simp.Step.done { expr := e }
-    | e, _ => return Simp.Step.done { expr := e }
+        return (Simp.Step.done { expr := newTgt, proof? := proof }, none)
+      | none => return (Simp.Step.done { expr := e.fst },none)
+    | e, _ => return (Simp.Step.done { expr := e.fst },none)
 
 @[builtin_tactic acRfl] def acRflTactic : Lean.Elab.Tactic.Tactic := fun _ => do
   let goal ← getMainGoal

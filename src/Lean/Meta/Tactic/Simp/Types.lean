@@ -49,6 +49,8 @@ def Result.mkEqSymm (e : Expr) (r : Simp.Result) : MetaM Simp.Result :=
 -- We use `SExprMap` because we want to discard cached results after a `discharge?`
 abbrev Cache := SExprMap Result
 
+abbrev CacheCond := SExprMap (Result × Option (Array (Expr)))
+
 abbrev CongrCache := ExprMap (Option CongrTheorem)
 
 structure Context where
@@ -143,7 +145,7 @@ structure CacheHits where
   {cacheHitsPositiveCorrect :=  c1.cacheHitsPositiveCorrect + c2.cacheHitsPositiveCorrect, cacheHitsNegativeCorrect := c1.cacheHitsNegativeCorrect + c2.cacheHitsNegativeCorrect ,cacheHitsPositiveIncorrect := c1.cacheHitsPositiveIncorrect+c2.cacheHitsPositiveIncorrect , cacheHitsNegativeIncorrect := c1.cacheHitsNegativeIncorrect + c2.cacheHitsNegativeIncorrect,nonPassedCacheHitsPositive := c1.nonPassedCacheHitsPositive+c2.nonPassedCacheHitsPositive,nonPassedCacheHitsNegative := c1.nonPassedCacheHitsNegative+c2.nonPassedCacheHitsNegative ,simpCalls := c1.simpCalls + c2.simpCalls, wrong := c1.wrong.append c2.wrong}
 
 structure State where
-  cache         : Cache := {}
+  cache         : CacheCond := {}
   nonPassedCache: Cache := {}
   congrCache    : CongrCache := {}
   usedTheorems  : UsedSimps := {}
@@ -206,7 +208,7 @@ A simplification procedure. Recall that we have `pre` and `post` procedures.
 See `Step`.
 -/
 abbrev Simproc := Expr → SimpM Step
-abbrev SimprocCond := (Expr × Option (HashSet Expr)) → SimpM (Step × Option (HashSet Expr))
+abbrev SimprocCond := (Expr × Option (Array (Expr))) → SimpM (Step × Option (Array (Expr)))
 
 abbrev DStep := TransformStep
 
@@ -223,7 +225,7 @@ def _root_.Lean.TransformStep.toStep (s : TransformStep) : Step :=
   | .continue none     => .continue none
 
 --TODO correct?
-def mkEqTransResultStepCond (r : Result) (s : (Step × Option (HashSet Expr))) : MetaM (Step × Option (HashSet Expr)) :=
+def mkEqTransResultStepCond (r : Result) (s : (Step × Option (Array (Expr)))) : MetaM (Step × Option (Array (Expr))) :=
   match s with
   | (.done r' , c)           => return (.done (← mkEqTransOptProofResult r.proof? r.cache r'), c)
   | (.visit r', c)           => return (.visit (← mkEqTransOptProofResult r.proof? r.cache r'), c)
@@ -312,7 +314,7 @@ structure Methods where
   post       : SimprocCond := fun (e, _) => return (.done { expr := e }, none)
   dpre       : DSimproc := fun _ => return .continue
   dpost      : DSimproc := fun e => return .done e
-  discharge? : Expr → SimpM (Option Expr) := fun _ => return none
+  discharge? : Expr → SimpM (Option Expr × Option Expr) := fun _ => return (none, none)
   /--
   `wellBehavedDischarge` must **not** be set to `true` IF `discharge?`
   access local declarations with index >= `Context.lctxInitIndices` when
@@ -340,7 +342,7 @@ def getMethods : SimpM Methods :=
 def pre (e : Expr) : SimpM Step := do
   (← getMethods).pre e
 
-def post (e : Expr) : SimpM (Step × Option (HashSet Expr)) := do
+def post (e : Expr) : SimpM (Step × Option (Array (Expr))) := do
   (← getMethods).post (e, none)
 
 @[inline] def getContext : SimpM Context :=
@@ -377,6 +379,7 @@ Save current cache, reset it, execute `x`, and then restore original cache.
   try x finally modify fun s => { s with cache := cacheSaved, nonPassedCache := nonPassedCacheSaved }
 
 @[inline] def withDischarger (discharge? : Expr → SimpM (Option Expr)) (wellBehavedDischarge : Bool) (x : SimpM α) : SimpM α :=
+  let discharge? : Expr → SimpM (Option Expr × Option Expr) := fun e => do pure (<- discharge? e, none)
   withFreshCache <|
   withReader (fun r => { MethodsRef.toMethods r with discharge?, wellBehavedDischarge }.toMethodsRef) x
 
