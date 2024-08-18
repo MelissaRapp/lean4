@@ -659,20 +659,15 @@ where
           if let some result2 := cache.find? e then
            modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           return result
-      trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
-      let result := <- simpLoop e
-      if let some result2 := cache.find? e then
+        if let some result2 := cache.find? e then
+          -- only use negative results
+          unless result2.expr != e do
           let newThms :=  (<-get).newThms
-          --TODO: why are there no preTheorems at all? looseBvarCheck sound?
-          --TODO better option than returning true with looseBvar?
           let recheckNeeded := (<- e.findM? (fun f => do if f.hasLooseBVars then  return true else newThms.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig)))).size > 0 || ((<- (thm.pre.getMatchWithExtra (f) (getDtConfig (<-getConfig)))).size > 0)))).isSome
-          -- if recheckNeeded && result2.expr == e then unless result2.expr != result.expr do
-          --    modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
-          unless recheckNeeded do
-          modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
-          if result2.expr != result.expr && e != result.expr && result2.expr == e then
-          modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
-      return result
+          unless recheckNeeded do return result2
+      trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
+      simpLoop e
+
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
