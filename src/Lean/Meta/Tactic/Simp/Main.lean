@@ -641,6 +641,51 @@ where
       return <- cacheResult e cfg r
     cacheResult e cfg r
 
+
+namespace FindImpl
+unsafe abbrev FindM (m) := StateT (PtrSet Expr) m
+
+@[inline] unsafe def checkVisited [Monad m] [MonadControlT MetaM m] (e : Expr) : OptionT (FindM m) Unit := do
+  if (← get).contains e then
+    failure
+  modify fun s => s.insert e
+
+unsafe def findM'?  [Monad m] [MonadControlT MetaM m] (p : Expr → m Bool)  (e : Expr) : OptionT (FindM m) Expr :=
+  let rec visit (e : Expr) := do
+    checkVisited e
+    if ← p e then
+      pure e
+    else match e with
+      --TODO correct instantiation?
+      | .forallE _ d b _ =>  visit d <|> forallTelescope e (fun xs y => visit (b.instantiate xs))
+      | .lam _ d b _     => visit d <|> lambdaTelescope e (fun xs y => do visit (b.instantiate xs))
+      | .mdata _ b       => visit b
+      | .letE _ t v b _  => visit t <|> visit v <|> lambdaLetTelescope e (fun xs y => do visit (b.instantiate xs))
+      | .app f a         => visit f <|> visit a
+      | .proj _ _ b      => visit b
+      | _                => failure
+  visit e
+
+unsafe def findUnsafeM'? {m} [Monad m] [MonadControlT MetaM m] (p : Expr → m Bool) (e : Expr)   : m (Option Expr) :=
+  findM'? p e  |>.run' mkPtrSet
+end FindImpl
+
+
+@[implemented_by Lean.Meta.Simp.FindImpl.findUnsafeM'?]
+/- This is a reference implementation for the unsafe one above -/
+def findM'? [Monad m] [MonadControlT MetaM m] (p : Expr → m Bool) (e : Expr)  : m (Option Expr) := do
+  if ← p e then
+    return some e
+  else match e with
+    | .forallE _ d b _ => findM'? p d  <||> findM'? p b
+    | .lam _ d b _     => findM'? p d  <||> findM'? p b
+    | .mdata _ b       => findM'? p b
+    | .letE _ t v b _  => findM'? p t  <||> findM'? p v  <||> findM'? p b
+    | .app f a         => findM'? p f <||> findM'? p a
+    | .proj _ _ b      => findM'? p b
+    | _                => pure none
+
+
 @[export lean_simp]
 def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
   checkSystem "simp"
@@ -660,14 +705,15 @@ where
            modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
           return result
         if let some result2 := cache.find? e then
-          -- only use negative results
+          --only use negative results
           unless result2.expr != e do
           let newThms :=  (<-get).newThms
-          let recheckNeeded := (<- e.findM? (fun f => do if f.hasLooseBVars then  return true else newThms.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig)))).size > 0 || ((<- (thm.pre.getMatchWithExtra (f) (getDtConfig (<-getConfig)))).size > 0)))).isSome
-          unless recheckNeeded do return result2
+          let recheckExpr := (<- findM'?  (fun f => newThms.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig)))).size > 0)) e )
+          let recheckNeeded := recheckExpr.isSome
+          unless recheckNeeded do
+          return result2
       trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
       simpLoop e
-
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
