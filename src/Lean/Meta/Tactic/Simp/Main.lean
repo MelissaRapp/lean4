@@ -708,7 +708,7 @@ where
           --only use negative results
           unless result2.expr != e do
           let newThms :=  (<-get).newThms
-          let recheckExpr := (<- findM'?  (fun f => newThms.anyM (fun thm => do  return (<- (thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig)))).size > 0)) e )
+          let recheckExpr := (<- findM'?  (fun f => newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)) e )
           let recheckNeeded := recheckExpr.isSome
           unless recheckNeeded do
           return result2
@@ -755,6 +755,12 @@ end Simp
 open Simp (SimprocsArray Stats)
 
 def simp (e : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
+    (stats : Stats := {}) (newThms : SimpTheoremsArray := {}): MetaM (Simp.Result  × Stats ) := do profileitM Exception "simp" (← getOptions) do
+  match discharge? with
+  | none   => let (r,s,_) <- Simp.main e ctx stats (methods := Simp.mkDefaultMethodsCore simprocs) {} newThms return (r,s)
+  | some d => let (r,s,_) <- Simp.main e ctx stats (methods := Simp.mkMethods simprocs d (wellBehavedDischarge := false)) {} newThms return (r,s)
+
+def simpC (e : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
     (stats : Stats := {}) (cache : Simp.Cache := {}) (newThms : SimpTheoremsArray := {}): MetaM (Simp.Result  × Stats × Simp.Cache) := do profileitM Exception "simp" (← getOptions) do
   match discharge? with
   | none   => Simp.main e ctx stats (methods := Simp.mkDefaultMethodsCore simprocs) cache newThms
@@ -768,7 +774,7 @@ def dsimp (e : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[])
 def simpTargetCore (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
     (mayCloseGoal := true) (stats : Stats := {}) (cache : Simp.Cache := {}) (newThms : SimpTheoremsArray := {}): MetaM (Option MVarId × Stats × Simp.Cache) := do
   let target ← instantiateMVars (← mvarId.getType)
-  let (r, stats, cache') ← simp target ctx simprocs discharge? stats cache newThms  if mayCloseGoal && r.expr.isTrue then
+  let (r, stats, cache') ← simpC target ctx simprocs discharge? stats cache newThms  if mayCloseGoal && r.expr.isTrue then
     match r.proof? with
     | some proof => mvarId.assign (← mkOfEqTrue proof)
     | none => mvarId.assign (mkConst ``True.intro)
@@ -816,7 +822,7 @@ def applySimpResultToFVarId (mvarId : MVarId) (fvarId : FVarId) (r : Simp.Result
   This method assumes `mvarId` is not assigned, and we are already using `mvarId`s local context. -/
 def simpStep (mvarId : MVarId) (proof : Expr) (prop : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
     (mayCloseGoal := true) (stats : Stats := {}) (cache : Simp.Cache := {}) (newThms : SimpTheoremsArray := {}): MetaM (Option (Expr × Expr) × Stats × Simp.Cache) := do
-    let (r, stats, cache') ← simp prop ctx simprocs discharge? stats cache newThms
+    let (r, stats, cache') ← simpC prop ctx simprocs discharge? stats cache newThms
     return (← applySimpResultToProp mvarId proof prop r (mayCloseGoal := mayCloseGoal), stats, cache')
 
 def applySimpResultToLocalDeclCore (mvarId : MVarId) (fvarId : FVarId) (r : Option (Expr × Expr)) : MetaM (Option (FVarId × MVarId)) := do
@@ -869,7 +875,7 @@ def simpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray :=
       let localDecl ← fvarId.getDecl
       let type ← instantiateMVars localDecl.type
       let ctx := { ctx with simpTheorems := ctx.simpTheorems.eraseTheorem (.fvar localDecl.fvarId) }
-      let (r, stats', cache') ← simp type ctx simprocs discharge? stats cache
+      let (r, stats', cache') ← simpC type ctx simprocs discharge? stats cache
       stats := stats'; cache := cache'
       match r.proof? with
       | some _ => match (← applySimpResultToProp mvarIdNew (mkFVar fvarId) type r) with
