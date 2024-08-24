@@ -53,6 +53,8 @@ def discharge?' (thmId : Origin) (x : Expr) (type : Expr) : SimpM Bool := do
           return .failedAssign
         return .proved
       | none =>
+        let abstractType := (<- abstractMVars type)
+        modify fun s => { s with dTypes := s.dTypes.push abstractType}
         modify fun s => { s with usedTheorems }
         return .notProved
   return r = .proved
@@ -93,6 +95,7 @@ def synthesizeArgs (thmId : Origin) (bis : Array BinderInfo) (xs : Array Expr) :
           continue
       if (← isProp type) then
         unless (← discharge?' thmId x type) do
+          modify fun s => {s with dischargeTried := true}
           return false
   return true
 where

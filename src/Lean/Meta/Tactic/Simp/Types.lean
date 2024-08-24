@@ -142,8 +142,10 @@ structure CacheHits where
 @[inline] def CacheHits.mergeCacheHits (c1 c2: CacheHits) : CacheHits :=
   {cacheHitsPositiveCorrect :=  c1.cacheHitsPositiveCorrect + c2.cacheHitsPositiveCorrect, cacheHitsNegativeCorrect := c1.cacheHitsNegativeCorrect + c2.cacheHitsNegativeCorrect ,cacheHitsPositiveIncorrect := c1.cacheHitsPositiveIncorrect+c2.cacheHitsPositiveIncorrect , cacheHitsNegativeIncorrect := c1.cacheHitsNegativeIncorrect + c2.cacheHitsNegativeIncorrect,nonPassedCacheHitsPositive := c1.nonPassedCacheHitsPositive+c2.nonPassedCacheHitsPositive,nonPassedCacheHitsNegative := c1.nonPassedCacheHitsNegative+c2.nonPassedCacheHitsNegative ,simpCalls := c1.simpCalls + c2.simpCalls, wrong := c1.wrong.append c2.wrong}
 
+
+abbrev CacheD := SExprMap (Result × Array AbstractMVarsResult)
 structure State where
-  cache         : Cache := {}
+  cache         : CacheD := {}
   nonPassedCache: Cache := {}
   congrCache    : CongrCache := {}
   usedTheorems  : UsedSimps := {}
@@ -151,6 +153,8 @@ structure State where
   cacheHits     : CacheHits := {}
   diag          : Diagnostics := {}
   newThms       : SimpTheoremsArray := {}
+  dischargeTried:Bool :=false
+  dTypes: Array AbstractMVarsResult := {}
 
 structure Stats where
   usedTheorems : UsedSimps := {}
@@ -173,7 +177,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { newThms,nonPassedCache, cache, congrCache, usedTheorems, numSteps,  cacheHits, diag } => { newThms, nonPassedCache ,cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag }
+    modify fun { newThms,nonPassedCache, cache, congrCache, usedTheorems, numSteps,  cacheHits, diag ,dischargeTried, dTypes} => { newThms, nonPassedCache ,cache, congrCache, usedTheorems, numSteps, cacheHits, diag := f diag ,dischargeTried, dTypes}
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
