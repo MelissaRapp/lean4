@@ -713,13 +713,19 @@ where
           let recheckExpr := (<- findM'?  (fun f => newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)) e )
           let mut recheckNeeded := recheckExpr.isSome
           unless recheckNeeded do
-            if dTypes.size > 0 then recheckNeeded := true
-            -- let discharge := (<-getMethods).discharge?
-            -- for t in dTypes do
-            --   let (a,b,c) <- openAbstractMVarsResult t
-            --   try
-            --   if (← withPreservedCache <|  discharge c).isSome then recheckNeeded := true break
-            --   catch e => trace[Meta.Tactic.simp.negativeCache] "{e.toMessageData}"
+            --if dTypes.size > 0 then recheckNeeded := true
+            for t in dTypes do
+              --why does this stil llead to unknow fvar errors?? can i just check if fvar is known and disregard otherwise? what is correct solution to recheck???????
+              --can i maybe abstract the fvars aswell??
+              try
+              let (a,b,c) <- openAbstractMVarsResult t
+              trace[Meta.Tactic.simp.negativeCache] "abst expr {t.expr}"
+              trace[Meta.Tactic.simp.negativeCache] "abst expr opened {c}"
+              trace[Meta.Tactic.simp.negativeCache] "abst expr as {a}"
+              trace[Meta.Tactic.simp.negativeCache] "abst expr opened+instantiated {c.instantiate a}"
+              recheckNeeded := <- newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (c.instantiate a) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)
+              trace[Meta.Tactic.simp.negativeCache] "dTypes recheck {<- newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (c.instantiate a) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)}"
+              catch e => trace[Meta.Tactic.simp.negativeCache] "{e.toMessageData}"
           unless recheckNeeded do
           return result2
       trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
@@ -880,13 +886,13 @@ def simpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray :=
     let mut toAssert := #[]
     let mut replaced := #[]
     let mut stats := stats
-    let mut cache := cache
+    --let mut cache := cache
     for fvarId in fvarIdsToSimp do
       let localDecl ← fvarId.getDecl
       let type ← instantiateMVars localDecl.type
       let ctx := { ctx with simpTheorems := ctx.simpTheorems.eraseTheorem (.fvar localDecl.fvarId) }
       let (r, stats', cache') ← simpC type ctx simprocs discharge? stats cache
-      stats := stats'; cache := cache'
+      stats := stats'; --cache := cache'
       match r.proof? with
       | some _ => match (← applySimpResultToProp mvarIdNew (mkFVar fvarId) type r) with
         | none => return (none, stats, cache)
@@ -902,7 +908,7 @@ def simpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray :=
     if simplifyTarget then
       match (← simpTarget mvarIdNew ctx simprocs discharge? (stats := stats) (cache := cache)) with
       | (none, stats', cache') => return (none, stats', cache')
-      | (some mvarIdNew', stats', cache') => mvarIdNew := mvarIdNew'; stats := stats'; cache := cache'
+      | (some mvarIdNew', stats', cache') => mvarIdNew := mvarIdNew'; stats := stats'; --cache := cache'
     let (fvarIdsNew, mvarIdNew') ← mvarIdNew.assertHypotheses toAssert
     mvarIdNew := mvarIdNew'
     let toClear := fvarIdsToSimp.filter fun fvarId => !replaced.contains fvarId
