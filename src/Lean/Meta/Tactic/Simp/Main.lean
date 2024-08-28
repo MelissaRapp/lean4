@@ -605,6 +605,7 @@ def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
     --if !x.contains e then
     --unless (<-get).dischargeTried do
     let dTypes := (<-get).dTypes
+    unless e == r.expr && dTypes.any fun t => t.expr == (Expr.lit (.strVal "noCache")) do
     modify fun s => { s with cache := s.cache.insert e (r, dTypes) }
   return r
 
@@ -705,31 +706,62 @@ where
           modify fun s => {s with cacheHits := s.cacheHits.incrementnonPassedCacheHit (e != result.expr)}
           if let some (result2, _) := cache.find? e then
            modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
+           if (result2.expr == result.expr) == false && (e != result2.expr) == false then trace[Meta.Tactic.simp.negativeCache] "wronCachehit a{e}" modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
           return result
         if let some (result2, dTypes ):= cache.find? e then
           --only use negative results
           unless result2.expr != e do
           let newThms :=  (<-get).newThms
           let recheckExpr := (<- findM'?  (fun f => newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)) e )
+          let lctx := (<-getLCtx)
           let mut recheckNeeded := recheckExpr.isSome
           unless recheckNeeded do
             --if dTypes.size > 0 then recheckNeeded := true
-            for t in dTypes do
+           for t in dTypes do
               --why does this stil llead to unknow fvar errors?? can i just check if fvar is known and disregard otherwise? what is correct solution to recheck???????
               --can i maybe abstract the fvars aswell??
-              try
+              --let lctx := (<-getLCtx)
+              if t.expr.hasAnyFVar (fun f => !lctx.contains f) then
+               recheckNeeded := true break
               let (a,b,c) <- openAbstractMVarsResult t
               trace[Meta.Tactic.simp.negativeCache] "abst expr {t.expr}"
               trace[Meta.Tactic.simp.negativeCache] "abst expr opened {c}"
               trace[Meta.Tactic.simp.negativeCache] "abst expr as {a}"
               trace[Meta.Tactic.simp.negativeCache] "abst expr opened+instantiated {c.instantiate a}"
-              recheckNeeded := <- newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (c.instantiate a) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)
+              recheckNeeded := (<- findM'?  (fun f => newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)) c).isSome
               trace[Meta.Tactic.simp.negativeCache] "dTypes recheck {<- newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (c.instantiate a) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)}"
-              catch e => trace[Meta.Tactic.simp.negativeCache] "{e.toMessageData}"
+              if recheckNeeded then break
           unless recheckNeeded do
           return result2
       trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
       simpLoop e
+      -- let result <- simpLoop e
+      --  if let some (result2, dTypes ):= cache.find? e then
+      --     --only use negative results
+      --     --unless result2.expr != e do
+      --     let newThms :=  (<-get).newThms
+      --     let recheckExpr := (<- findM'?  (fun f => newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (f) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)) e )
+      --     let mut recheckNeeded := recheckExpr.isSome
+      --     unless recheckNeeded do
+      --       --if dTypes.size > 0 then recheckNeeded := true
+      --       for t in dTypes do
+      --         --why does this stil llead to unknow fvar errors?? can i just check if fvar is known and disregard otherwise? what is correct solution to recheck???????
+      --         --can i maybe abstract the fvars aswell??
+      --         let lctx := (<-getLCtx)
+      --         if t.expr.hasAnyFVar (fun f => !lctx.contains f) then recheckNeeded := true break
+      --         let (a,b,c) <- openAbstractMVarsResult t
+      --         trace[Meta.Tactic.simp.negativeCache] "abst expr {t.expr}"
+      --         trace[Meta.Tactic.simp.negativeCache] "abst expr opened {c}"
+      --         trace[Meta.Tactic.simp.negativeCache] "abst expr as {a}"
+      --         trace[Meta.Tactic.simp.negativeCache] "abst expr opened+instantiated {c.instantiate a}"
+      --         recheckNeeded := <- newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (c.instantiate a) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)
+      --         trace[Meta.Tactic.simp.negativeCache] "dTypes recheck {<- newThms.anyM (fun thm => do  return ((<- ((thm.post.getMatchWithExtra (c.instantiate a) (getDtConfig (<-getConfig))))).filter fun c => !thm.erased.contains c.fst.origin).size > 0)}"
+      --         if recheckNeeded then break
+      --     unless recheckNeeded do
+      --     modify fun s => {s with cacheHits := s.cacheHits.incrementCacheHit (result2.expr == result.expr) (e != result2.expr)}
+      --     if (result2.expr == result.expr) == false && (e != result2.expr) == false then trace[Meta.Tactic.simp.negativeCache] "wronCachehit b {e} {repr e} => {result.expr} {repr result.expr}" trace[Meta.Tactic.simp.negativeCache] "{(<-get).usedTheorems.toArray.map fun s => s.fst.key}" trace[Meta.Tactic.simp.negativeCache] "hmm?" modify fun s => {s with cacheHits := s.cacheHits.addWrong e}
+      -- return result
+
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
@@ -881,22 +913,38 @@ def simpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray :=
     (simplifyTarget : Bool := true) (fvarIdsToSimp : Array FVarId := #[])
     (stats : Stats := {}) (cache : Simp.CacheD := {}): MetaM (Option (Array FVarId × MVarId) × Stats × Simp.CacheD) := do
   mvarId.withContext do
+    trace[Meta.Tactic.simp.negativeCache] "toSimp: {fvarIdsToSimp.data.map fun f => f.name}"
+    trace[Meta.Tactic.simp.negativeCache] "toSimp: {fvarIdsToSimp.size}"
+    trace[Meta.Tactic.simp.negativeCache] "toSimp: {fvarIdsToSimp.size == 0}"
     mvarId.checkNotAssigned `simp
     let mut mvarIdNew := mvarId
     let mut toAssert := #[]
     let mut replaced := #[]
     let mut stats := stats
-    --let mut cache := cache
+    let mut cache := cache
+    let c := cache.contains (Expr.lit (.strVal "aesop"))
+    if ! c then cache := {}
+    let mut newThms : SimpTheoremsArray := {}
+    --TODO cache and newThms handling in loop
+    trace[Meta.Tactic.simp.negativeCache] "a"
     for fvarId in fvarIdsToSimp do
+      if c then
+       let hs ←  mvarIdNew.withContext do getPropHyps
+       for h in hs do
+         unless ctx.simpTheorems.isErased (.fvar h) do
+         let localDecl ← h.getDecl
+         let proof  := localDecl.toExpr
+         newThms ← newThms.addTheorem (.fvar h) proof
       let localDecl ← fvarId.getDecl
       let type ← instantiateMVars localDecl.type
       let ctx := { ctx with simpTheorems := ctx.simpTheorems.eraseTheorem (.fvar localDecl.fvarId) }
-      let (r, stats', cache') ← simpC type ctx simprocs discharge? stats cache
-      stats := stats'; --cache := cache'
+      let (r, stats', cache') ← simpC type ctx simprocs discharge? stats cache newThms
+      trace[Meta.Tactic.simp.negativeCache] "toSimp {type} => {r.expr}"
+      stats := stats'; if c then cache := cache'
       match r.proof? with
       | some _ => match (← applySimpResultToProp mvarIdNew (mkFVar fvarId) type r) with
         | none => return (none, stats, cache)
-        | some (value, type) => toAssert := toAssert.push { userName := localDecl.userName, type := type, value := value }
+        | some (value, type2) => toAssert := toAssert.push { userName := localDecl.userName, type := type2, value := value }
       | none =>
         if r.expr.isFalse then
           mvarIdNew.assign (← mkFalseElim (← mvarIdNew.getType) (mkFVar fvarId))
@@ -906,9 +954,22 @@ def simpGoal (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray :=
         mvarIdNew ← mvarIdNew.replaceLocalDeclDefEq fvarId r.expr
         replaced := replaced.push fvarId
     if simplifyTarget then
-      match (← simpTarget mvarIdNew ctx simprocs discharge? (stats := stats) (cache := cache)) with
+      trace[Meta.Tactic.simp.negativeCache] "simptargetProp  {(<-getPropHyps).map fun f => f.name}"
+      trace[Meta.Tactic.simp.negativeCache] "simptargetNonDep  {(<-mvarIdNew.getNondepPropHyps).map fun f => f.name}"
+      trace[Meta.Tactic.simp.negativeCache] "simptarget {mvarIdNew}  {repr mvarIdNew}"
+      newThms := {}
+      if c then
+       let hs ←  mvarIdNew.withContext do getPropHyps
+       trace[Meta.Tactic.simp.negativeCache] "c"
+       for h in hs do
+         unless ctx.simpTheorems.isErased (.fvar h) do
+         let localDecl ← h.getDecl
+         let proof  := localDecl.toExpr
+         newThms ← newThms.addTheorem (.fvar h) proof
+      match (← simpTarget mvarIdNew ctx simprocs discharge? (stats := stats) (cache := cache) (newThms := newThms)) with
       | (none, stats', cache') => return (none, stats', cache')
-      | (some mvarIdNew', stats', cache') => mvarIdNew := mvarIdNew'; stats := stats'; --cache := cache'
+      | (some mvarIdNew', stats', cache') => mvarIdNew := mvarIdNew'; stats := stats'; if c then cache := cache'
+    trace[Meta.Tactic.simp.negativeCache] "toAssert: {toAssert.map fun h => h.value}"
     let (fvarIdsNew, mvarIdNew') ← mvarIdNew.assertHypotheses toAssert
     mvarIdNew := mvarIdNew'
     let toClear := fvarIdsToSimp.filter fun fvarId => !replaced.contains fvarId
