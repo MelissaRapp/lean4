@@ -46,13 +46,19 @@ def discharge?' (thmId : Origin) (x : Expr) (type : Expr) : SimpM Bool := do
       -- `simp` lemmas used during unsuccessful discharging.
       -- We use `withPreservedCache` to ensure the cache is restored after `discharge?`
       let usedTheorems := (← get).usedTheorems
-      match (← withPreservedCache <| (← getMethods).discharge? type) with
+      let methods := (← getMethods)
+      match (← withPreservedCache <| methods.discharge? type) with
       | some proof =>
         unless (← isDefEq x proof) do
           modify fun s => { s with usedTheorems }
           return .failedAssign
         return .proved
       | none =>
+        let cfg := (← getConfig)
+        if cfg.memoize && cfg.negativeCaching then
+          -- only the default discharger adds the side conditions to be saved for rechecking to the SimpM state
+          unless methods.defaultDischarge do
+          modify fun s => {s with negativeCachingNotPossible := true}
         modify fun s => { s with usedTheorems }
         return .notProved
   return r = .proved
@@ -212,7 +218,6 @@ where
       for (thm, numExtraArgs) in candidates do
         unless inErasedSet thm || (rflOnly && !thm.rfl) do
           if let some result ← tryTheoremWithExtraArgs? e thm numExtraArgs then
-            trace[Debug.Meta.Tactic.simp] "rewrite result {e} => {result.expr}"
             return some result
       return none
 
@@ -591,6 +596,7 @@ where
 def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
   let e := e.cleanupAnnotations
   if isEqnThmHypothesis e then
+    modify fun s => {s with negativeCachingNotPossible := true}
     if let some r ← dischargeUsingAssumption? e then
       return some r
     if let some r ← dischargeEqnThmHypothesis? e then
@@ -599,21 +605,24 @@ def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
   if r.expr.isTrue then
     return some (← mkOfEqTrue (← r.getProof))
   else
+    let abstractType ← abstractMVars r.expr
+    modify fun s => {s with dischargeTypes := s.dischargeTypes.push abstractType}
     return none
 
 abbrev Discharge := Expr → SimpM (Option Expr)
 
-def mkMethods (s : SimprocsArray) (discharge? : Discharge) (wellBehavedDischarge : Bool) : Methods := {
+def mkMethods (s : SimprocsArray) (discharge? : Discharge) (wellBehavedDischarge : Bool) (defaultDischarge : Bool := false) : Methods := {
   pre        := preDefault s
   post       := postDefault s
   dpre       := dpreDefault s
   dpost      := dpostDefault s
   discharge?
   wellBehavedDischarge
+  defaultDischarge
 }
 
 def mkDefaultMethodsCore (simprocs : SimprocsArray) : Methods :=
-  mkMethods simprocs dischargeDefault? (wellBehavedDischarge := true)
+  mkMethods simprocs dischargeDefault? (wellBehavedDischarge := true) (defaultDischarge := true)
 
 def mkDefaultMethods : CoreM Methods := do
   if simprocs.get (← getOptions) then

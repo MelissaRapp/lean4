@@ -226,6 +226,14 @@ structure Config where
   will **not** create a proof term which is an application of the annotated theorem.
   -/
   implicitDefEqProofs : Bool := true
+  --TODO maybe implement for simpGoal aswell
+  /--
+  When true (default: `false`) then the simplifier caches expressions that couldn't be simplified further, if possible.
+  In contrast to the caching done by memoize, these results will be reused between the internal simpCalls during a simp-all run and the cache will be returned in the end.
+  This makes it possible to reuse the cache between simplification on similiar goals.
+  This option assumes `memoize := true` and will not apply otherwise.
+  -/
+  negativeCaching           : Bool := false
   deriving Inhabited, BEq
 
 -- Configuration object for `simp_all`

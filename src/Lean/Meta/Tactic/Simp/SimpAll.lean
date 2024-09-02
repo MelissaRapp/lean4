@@ -31,6 +31,8 @@ structure State where
   simprocs     : SimprocsArray
   usedTheorems : Simp.UsedSimps := {}
   diag         : Simp.Diagnostics := {}
+  negativeCache: Simp.NegativeCache := {}
+  newTheorems  : SimpTheoremsArray := {}
 
 abbrev M := StateRefT State MetaM
 
@@ -38,12 +40,15 @@ private def initEntries : M Unit := do
   let hs ←  (← get).mvarId.withContext do getPropHyps
   let hsNonDeps ← (← get).mvarId.getNondepPropHyps
   let mut simpThms := (← get).ctx.simpTheorems
+  let mut newThms : SimpTheoremsArray := {}
+  let negativeCaching := (← get).ctx.config.negativeCaching
   for h in hs do
     unless simpThms.isErased (.fvar h) do
       let localDecl ← h.getDecl
       let proof  := localDecl.toExpr
       simpThms ← simpThms.addTheorem (.fvar h) proof
-      modify fun s => { s with ctx.simpTheorems := simpThms }
+      if negativeCaching then newThms ← newThms.addTheorem (.fvar h) proof
+      modify fun s => { s with ctx.simpTheorems := simpThms, newTheorems := newThms }
       if hsNonDeps.contains h then
         -- We only simplify nondependent hypotheses
         let type ← instantiateMVars localDecl.type
@@ -53,18 +58,24 @@ private def initEntries : M Unit := do
 private abbrev getSimpTheorems : M SimpTheoremsArray :=
   return (← get).ctx.simpTheorems
 
+private abbrev getNewTheorems : M SimpTheoremsArray :=
+  return (← get).newTheorems
+
 private partial def loop : M Bool := do
   modify fun s => { s with modified := false }
   let simprocs := (← get).simprocs
+  let negativeCaching := (← get).ctx.config.negativeCaching
   -- simplify entries
   for i in [:(← get).entries.size] do
+    let mut negativeCache := (← get).negativeCache
     let entry := (← get).entries[i]!
     let ctx := (← get).ctx
     -- We disable the current entry to prevent it to be simplified to `True`
     let simpThmsWithoutEntry := (← getSimpTheorems).eraseTheorem entry.id
+    let newThmsWithoutEntry := (← getNewTheorems).eraseTheorem entry.id
     let ctx := { ctx with simpTheorems := simpThmsWithoutEntry }
-    let (r, stats) ← simpStep (← get).mvarId entry.proof entry.type ctx simprocs (stats := { (← get) with })
-    modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag }
+    let (r, stats, negativeCache') ← simpStepWithNegativeCache (← get).mvarId entry.proof entry.type ctx simprocs (stats := { (← get) with }) (negativeCache := negativeCache) (newTheorems := newThmsWithoutEntry)
+    modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache' }
     match r with
     | none => return true -- closed the goal
     | some (proofNew, typeNew) =>
@@ -96,15 +107,20 @@ private partial def loop : M Bool := do
         let mut simpThmsNew := (← getSimpTheorems).eraseTheorem (.fvar entry.fvarId)
         let idNew ← mkFreshId
         simpThmsNew ← simpThmsNew.addTheorem (.other idNew) (← mkExpectedTypeHint proofNew typeNew)
+        let mut newThmsNew : SimpTheoremsArray := {}
+        if negativeCaching then
+         newThmsNew := (← getNewTheorems).eraseTheorem (.fvar entry.fvarId)
+         newThmsNew ← newThmsNew.addTheorem (.other idNew) (← mkExpectedTypeHint proofNew typeNew)
         modify fun s => { s with
           modified         := true
           ctx.simpTheorems := simpThmsNew
           entries[i]       := { entry with type := typeNew, proof := proofNew, id := .other idNew }
+          newTheorems := newThmsNew
         }
   -- simplify target
   let mvarId := (← get).mvarId
-  let (r, stats) ← simpTarget mvarId (← get).ctx simprocs (stats := { (← get) with })
-  modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag }
+  let (r, stats, negativeCache') ← simpTargetWithNegativeCache mvarId (← get).ctx simprocs (stats := { (← get) with }) (negativeCache := (← get).negativeCache) (newTheorems := ← getNewTheorems)
+  modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache' }
   match r with
   | none => return true
   | some mvarIdNew =>
@@ -144,13 +160,17 @@ def main : M (Option MVarId) := do
 
 end SimpAll
 
-def simpAll (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (stats : Stats := {}) : MetaM (Option MVarId × Stats) := do
+def simpAllWithNegativeCache (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {}) : MetaM (Option MVarId × Stats × Simp.NegativeCache) := do
   mvarId.withContext do
-    let (r, s) ← SimpAll.main.run { stats with mvarId, ctx, simprocs }
+    let (r, s) ← SimpAll.main.run { stats with mvarId, ctx, simprocs, negativeCache }
     if let .some mvarIdNew := r then
       if ctx.config.failIfUnchanged && mvarId == mvarIdNew then
         throwError "simp_all made no progress"
-    return (r, { s with })
+    return (r, { s with }, s.negativeCache )
+
+def simpAll (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (stats : Stats := {}) : MetaM (Option MVarId × Stats) := do
+  let (result, stats, _) ← simpAllWithNegativeCache mvarId ctx simprocs stats
+  return (result, stats)
 
 builtin_initialize
   registerTraceClass `Meta.Tactic.simp.all

@@ -49,6 +49,8 @@ def Result.mkEqSymm (e : Expr) (r : Simp.Result) : MetaM Simp.Result :=
 -- We use `SExprMap` because we want to discard cached results after a `discharge?`
 abbrev Cache := SExprMap Result
 
+abbrev NegativeCache := ExprMap (Array AbstractMVarsResult)
+
 abbrev CongrCache := ExprMap (Option CongrTheorem)
 
 structure Context where
@@ -140,6 +142,10 @@ structure Diagnostics where
 
 structure State where
   cache        : Cache := {}
+  negativeCache: NegativeCache := {}
+  dischargeTypes: Array AbstractMVarsResult := {}
+  negativeCachingNotPossible: Bool := false
+  newTheorems  : SimpTheoremsArray := {}
   congrCache   : CongrCache := {}
   usedTheorems : UsedSimps := {}
   numSteps     : Nat := 0
@@ -166,7 +172,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { cache, congrCache, usedTheorems, numSteps, diag } => { cache, congrCache, usedTheorems, numSteps, diag := f diag }
+    modify fun { cache, negativeCache, negativeCachingNotPossible,dischargeTypes, newTheorems, congrCache, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeTypes, newTheorems,congrCache, usedTheorems, numSteps, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
@@ -292,6 +298,11 @@ structure Methods where
   Reason: it would prevent us from aggressively caching `simp` results.
   -/
   wellBehavedDischarge : Bool := true
+  /--
+  `defaultDischarge` must **not** be set to `true` unless the default discharger is used.
+  Reason: the mechanism for saving side conditions to recheck when using negative caching across goals is currently built in inside of of it.
+  -/
+  defaultDischarge : Bool := false
   deriving Inhabited
 
 unsafe def Methods.toMethodsRefImpl (m : Methods) : MethodsRef :=
@@ -341,16 +352,18 @@ def inDSimp : SimpM Bool :=
   -- Recall that `cache.map₁` should be used linearly but `cache.map₂` is great for copies.
   let savedMap₂   := (← get).cache.map₂
   let savedStage₁ := (← get).cache.stage₁
+  let negativeCacheSaved   := (← get).negativeCache
   modify fun s => { s with cache := s.cache.switch }
-  try x finally modify fun s => { s with cache.map₂ := savedMap₂, cache.stage₁ := savedStage₁ }
+  try x finally modify fun s => { s with cache.map₂ := savedMap₂, cache.stage₁ := savedStage₁, negativeCache := negativeCacheSaved }
 
 /--
 Save current cache, reset it, execute `x`, and then restore original cache.
 -/
 @[inline] def withFreshCache (x : SimpM α) : SimpM α := do
   let cacheSaved := (← get).cache
-  modify fun s => { s with cache := {} }
-  try x finally modify fun s => { s with cache := cacheSaved }
+  let negativeCacheSaved := (← get).negativeCache
+  modify fun s => { s with cache := {}, negativeCache := {} }
+  try x finally modify fun s => { s with cache := cacheSaved, negativeCache := negativeCacheSaved }
 
 @[inline] def withDischarger (discharge? : Expr → SimpM (Option Expr)) (wellBehavedDischarge : Bool) (x : SimpM α) : SimpM α :=
   withFreshCache <|
