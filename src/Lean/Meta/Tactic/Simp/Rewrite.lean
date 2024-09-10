@@ -605,8 +605,7 @@ def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
   if r.expr.isTrue then
     return some (← mkOfEqTrue (← r.getProof))
   else
-    let abstractType ← abstractMVars r.expr
-    modify fun s => {s with dischargeTypes := s.dischargeTypes.push abstractType}
+    modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert r.expr}
     return none
 
 abbrev Discharge := Expr → SimpM (Option Expr)

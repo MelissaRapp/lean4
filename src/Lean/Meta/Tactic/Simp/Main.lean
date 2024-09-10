@@ -608,12 +608,9 @@ def simpStep (e : Expr) : SimpM Result := do
 def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
   if cfg.memoize && r.cache then
     modify fun s => { s with cache := s.cache.insert e r }
-    if cfg.negativeCaching then
-      let s := (← get)
-      if e == r.expr && !s.negativeCachingNotPossible then
-      modify fun s => { s with negativeCache := s.negativeCache.insert e s.dischargeTypes}
-      else
-      modify fun s => { s with negativeCache := s.negativeCache.erase e  }
+    if cfg.negativeCaching && e == r.expr then
+      if !(← get).negativeCachingNotPossible then
+      modify fun s => { s with negativeCache := s.negativeCache.insert e s.dischargeExpressions}
   return r
 
 partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do
@@ -648,7 +645,7 @@ where
       r ← r.mkEqTrans (← simpLoop r.expr)
     cacheResult e cfg r
 
-def negativeCacheResultValid (e : Expr) (dischargeExpressions : Array AbstractMVarsResult) (cfg : Config) (newTheorems : SimpTheoremsArray ) : SimpM Bool := do
+def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr) (cfg : Config) (newTheorems : SimpTheoremsArray ) : SimpM Bool := do
   let config := getDtConfig cfg
   --only extracting the candidates is enough, so the function to get matches from the simp theorems can be abstracted
   let matchFunction := if cfg.index then
@@ -663,9 +660,9 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : Array AbstractMV
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
     --can't recheck a dischargeExpression since a contained fvar is no longer in context => invalidate the cacheResult
-    if dischargeExpression.expr.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then return false
+    if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then return false
     --a new theorem matches a subExpression of a dischargeExpression of e
-    if ← dischargeExpression.expr.anyMTelescoping fun subExpr =>
+    if ← dischargeExpression.anyMTelescoping fun subExpr =>
       newTheorems.anyM (fun thms =>
         do pure (((← matchFunction thms.post subExpr).filter fun candidate => !(thms.erased.contains candidate.origin)).size > 0))
     then return false

@@ -49,7 +49,7 @@ def Result.mkEqSymm (e : Expr) (r : Simp.Result) : MetaM Simp.Result :=
 -- We use `SExprMap` because we want to discard cached results after a `discharge?`
 abbrev Cache := SExprMap Result
 
-abbrev NegativeCache := ExprMap (Array AbstractMVarsResult)
+abbrev NegativeCache := ExprMap (HashSet Expr)
 
 abbrev CongrCache := ExprMap (Option CongrTheorem)
 
@@ -143,7 +143,7 @@ structure Diagnostics where
 structure State where
   cache        : Cache := {}
   negativeCache: NegativeCache := {}
-  dischargeTypes: Array AbstractMVarsResult := {}
+  dischargeExpressions: HashSet Expr := {}
   negativeCachingNotPossible: Bool := false
   newTheorems  : SimpTheoremsArray := {}
   congrCache   : CongrCache := {}
@@ -172,7 +172,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { cache, negativeCache, negativeCachingNotPossible,dischargeTypes, newTheorems, congrCache, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeTypes, newTheorems,congrCache, usedTheorems, numSteps, diag := f diag }
+    modify fun { cache, negativeCache, negativeCachingNotPossible,dischargeExpressions, newTheorems, congrCache, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, newTheorems,congrCache, usedTheorems, numSteps, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
