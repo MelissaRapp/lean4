@@ -31,6 +31,9 @@ structure State where
   simprocs     : SimprocsArray
   usedTheorems : Simp.UsedSimps := {}
   diag         : Simp.Diagnostics := {}
+  lctxFalseRetuns : Nat := 0
+  exprFalseReturns : Nat := 0
+  dischFalseReturns : Nat := 0
   negativeCache: Simp.NegativeCache := {}
   newTheorems  : SimpTheoremsArray := {}
 
@@ -75,7 +78,7 @@ private partial def loop : M Bool := do
     let newThmsWithoutEntry := (← getNewTheorems).eraseTheorem entry.id
     let ctx := { ctx with simpTheorems := simpThmsWithoutEntry }
     let (r, stats, negativeCache') ← simpStepWithNegativeCache (← get).mvarId entry.proof entry.type ctx simprocs (stats := { (← get) with }) (negativeCache := negativeCache) (newTheorems := newThmsWithoutEntry)
-    modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache' }
+    modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache', lctxFalseRetuns := stats.lctxFalseRetuns, exprFalseReturns := stats.exprFalseReturns, dischFalseReturns := stats.dischFalseReturns }
     match r with
     | none => return true -- closed the goal
     | some (proofNew, typeNew) =>
@@ -120,7 +123,7 @@ private partial def loop : M Bool := do
   -- simplify target
   let mvarId := (← get).mvarId
   let (r, stats, negativeCache') ← simpTargetWithNegativeCache mvarId (← get).ctx simprocs (stats := { (← get) with }) (negativeCache := (← get).negativeCache) (newTheorems := ← getNewTheorems)
-  modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache' }
+  modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache', lctxFalseRetuns := stats.lctxFalseRetuns, exprFalseReturns := stats.exprFalseReturns, dischFalseReturns := stats.dischFalseReturns }
   match r with
   | none => return true
   | some mvarIdNew =>
