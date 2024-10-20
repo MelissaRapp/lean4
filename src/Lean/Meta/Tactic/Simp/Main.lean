@@ -672,6 +672,7 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr) (c
     then
      modify fun s => { s with dischFalseReturns := s.dischFalseReturns + 1 }
      return false
+  modify fun s => { s with trueReturns := s.trueReturns + 1 }
   return true
 
 @[export lean_simp]
