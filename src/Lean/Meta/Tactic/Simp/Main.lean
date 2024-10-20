@@ -656,16 +656,22 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr) (c
   if ← e.anyMTelescoping fun subExpr =>
     newTheorems.anyM (fun thms =>
       do pure (((← matchFunction thms.post subExpr).filter fun candidate => !(thms.erased.contains candidate.origin)).size > 0))
-  then return false
+  then
+   modify fun s => { s with exprFalseReturns := s.exprFalseReturns + 1 }
+   return false
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
     --can't recheck a dischargeExpression since a contained fvar is no longer in context => invalidate the cacheResult
-    if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then return false
+    if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then
+     modify fun s => { s with lctxFalseRetuns := s.lctxFalseRetuns + 1 }
+     return false
     --a new theorem matches a subExpression of a dischargeExpression of e
     if ← dischargeExpression.anyMTelescoping fun subExpr =>
       newTheorems.anyM (fun thms =>
         do pure (((← matchFunction thms.post subExpr).filter fun candidate => !(thms.erased.contains candidate.origin)).size > 0))
-    then return false
+    then
+     modify fun s => { s with dischFalseReturns := s.dischFalseReturns + 1 }
+     return false
   return true
 
 @[export lean_simp]
