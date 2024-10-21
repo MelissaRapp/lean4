@@ -652,27 +652,28 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr) (c
    fun (d : SimpTheoremTree) (e : Expr) => ((·.map fun (candidate,_) => candidate) <$> (DiscrTree.getMatchWithExtra d e config))
   else
    fun (d : SimpTheoremTree) (e : Expr) => (·.1) <$> (DiscrTree.getMatchLiberal d e config)
+  if dischargeExpressions.size > 0 then  modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprWithDischExpr := s.negativeCacheStats.exprWithDischExpr + 1 }}
   --a new theorem matches a subExpression of e
   if ← e.anyMTelescoping fun subExpr =>
     newTheorems.anyM (fun thms =>
       do pure (((← matchFunction thms.post subExpr).filter fun candidate => !(thms.erased.contains candidate.origin)).size > 0))
   then
-   modify fun s => { s with exprFalseReturns := s.exprFalseReturns + 1 }
+   modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprFalseReturns := s.negativeCacheStats.exprFalseReturns + 1 }}
    return false
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
     --can't recheck a dischargeExpression since a contained fvar is no longer in context => invalidate the cacheResult
     if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then
-     modify fun s => { s with lctxFalseRetuns := s.lctxFalseRetuns + 1 }
+     modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with lctxFalseReturns := s.negativeCacheStats.lctxFalseReturns + 1 }}
      return false
     --a new theorem matches a subExpression of a dischargeExpression of e
     if ← dischargeExpression.anyMTelescoping fun subExpr =>
       newTheorems.anyM (fun thms =>
         do pure (((← matchFunction thms.post subExpr).filter fun candidate => !(thms.erased.contains candidate.origin)).size > 0))
     then
-     modify fun s => { s with dischFalseReturns := s.dischFalseReturns + 1 }
+     modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with dischFalseReturns := s.negativeCacheStats.dischFalseReturns + 1 }}
      return false
-  modify fun s => { s with trueReturns := s.trueReturns + 1 }
+  modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with trueReturns := s.negativeCacheStats.trueReturns + 1 }}
   return true
 
 @[export lean_simp]
