@@ -142,6 +142,7 @@ structure Diagnostics where
 
 structure NegativeCacheStats where
   exprWithDischExpr : Nat := 0
+  exprWithOutDischExpr : Nat := 0
   lctxFalseReturns : Nat := 0
   exprFalseReturns : Nat := 0
   dischFalseReturns : Nat := 0
@@ -149,7 +150,7 @@ structure NegativeCacheStats where
 deriving Inhabited
 
 @[inline] def NegativeCacheStats.mergeStats (s1 s2: NegativeCacheStats) : NegativeCacheStats :=
-  {exprWithDischExpr := s1.exprWithDischExpr + s2.exprWithDischExpr,lctxFalseReturns := s1.lctxFalseReturns + s2.lctxFalseReturns, exprFalseReturns := s1.exprFalseReturns + s2.exprFalseReturns, dischFalseReturns := s1.dischFalseReturns + s2.dischFalseReturns, trueReturns := s1.trueReturns + s2.trueReturns}
+  {exprWithDischExpr := s1.exprWithDischExpr + s2.exprWithDischExpr,exprWithOutDischExpr := s1.exprWithOutDischExpr + s2.exprWithOutDischExpr,lctxFalseReturns := s1.lctxFalseReturns + s2.lctxFalseReturns, exprFalseReturns := s1.exprFalseReturns + s2.exprFalseReturns, dischFalseReturns := s1.dischFalseReturns + s2.dischFalseReturns, trueReturns := s1.trueReturns + s2.trueReturns}
 
 
 structure State where

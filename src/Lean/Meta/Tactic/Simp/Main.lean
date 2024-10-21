@@ -652,7 +652,7 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr) (c
    fun (d : SimpTheoremTree) (e : Expr) => ((·.map fun (candidate,_) => candidate) <$> (DiscrTree.getMatchWithExtra d e config))
   else
    fun (d : SimpTheoremTree) (e : Expr) => (·.1) <$> (DiscrTree.getMatchLiberal d e config)
-  if dischargeExpressions.size > 0 then  modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprWithDischExpr := s.negativeCacheStats.exprWithDischExpr + 1 }}
+  if dischargeExpressions.size > 0 then  modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprWithDischExpr := s.negativeCacheStats.exprWithDischExpr + 1 }} else modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprWithOutDischExpr := s.negativeCacheStats.exprWithOutDischExpr + 1 }}
   --a new theorem matches a subExpression of e
   if ← e.anyMTelescoping fun subExpr =>
     newTheorems.anyM (fun thms =>
