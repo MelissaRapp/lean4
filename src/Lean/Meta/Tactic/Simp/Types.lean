@@ -146,11 +146,12 @@ structure NegativeCacheStats where
   lctxFalseReturns : Nat := 0
   exprFalseReturns : Nat := 0
   dischFalseReturns : Nat := 0
+  exprFalseReturnsBeforeCheckingAvailableDisch : Nat := 0
   trueReturns : Nat := 0
 deriving Inhabited
 
 @[inline] def NegativeCacheStats.mergeStats (s1 s2: NegativeCacheStats) : NegativeCacheStats :=
-  {exprWithDischExpr := s1.exprWithDischExpr + s2.exprWithDischExpr,exprWithOutDischExpr := s1.exprWithOutDischExpr + s2.exprWithOutDischExpr,lctxFalseReturns := s1.lctxFalseReturns + s2.lctxFalseReturns, exprFalseReturns := s1.exprFalseReturns + s2.exprFalseReturns, dischFalseReturns := s1.dischFalseReturns + s2.dischFalseReturns, trueReturns := s1.trueReturns + s2.trueReturns}
+  {exprWithDischExpr := s1.exprWithDischExpr + s2.exprWithDischExpr,exprWithOutDischExpr := s1.exprWithOutDischExpr + s2.exprWithOutDischExpr,lctxFalseReturns := s1.lctxFalseReturns + s2.lctxFalseReturns, exprFalseReturns := s1.exprFalseReturns + s2.exprFalseReturns, dischFalseReturns := s1.dischFalseReturns + s2.dischFalseReturns, trueReturns := s1.trueReturns + s2.trueReturns, exprFalseReturnsBeforeCheckingAvailableDisch := s1.exprFalseReturnsBeforeCheckingAvailableDisch + s2.exprFalseReturnsBeforeCheckingAvailableDisch}
 
 
 structure State where
