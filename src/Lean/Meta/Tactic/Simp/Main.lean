@@ -659,7 +659,7 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr) (c
       do pure (((← matchFunction thms.post subExpr).filter fun candidate => !(thms.erased.contains candidate.origin)).size > 0))
   then
    modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprFalseReturns := s.negativeCacheStats.exprFalseReturns + 1 }}
-   if dischargeExpressions.size > 0 then modify fun s => {s with negativeCacheStats := {s.negativeCacheStats with exprFalseReturnsBeforeCheckingAvailableDisch := s.negativeCacheStats.exprFalseReturnsBeforeCheckingAvailableDisch +1}}
+    if dischargeExpressions.size > 0 then modify fun s => {s with negativeCacheStats := {s.negativeCacheStats with exprFalseReturnsBeforeCheckingAvailableDisch := s.negativeCacheStats.exprFalseReturnsBeforeCheckingAvailableDisch +1}}
    return false
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
