@@ -610,7 +610,7 @@ def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
     modify fun s => { s with cache := s.cache.insert e r }
     if cfg.negativeCaching && e == r.expr then
       if !(← get).negativeCachingNotPossible then
-      modify fun s => { s with negativeCache := s.negativeCache.insert e s.dischargeExpressions}
+        modify fun s => { s with negativeCache := s.negativeCache.insert e s.dischargeExpressions}
   return r
 
 partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do
@@ -645,28 +645,34 @@ where
       r ← r.mkEqTrans (← simpLoop r.expr)
     cacheResult e cfg r
 
-def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr) (cfg : Config) (newTheorems : SimpTheoremsArray ) : SimpM Bool := do
+def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
+    (cfg : Config) (newTheorems : SimpTheoremsArray ) : SimpM Bool := do
   let config := getDtConfig cfg
   --only extracting the candidates is enough, so the function to get matches from the simp theorems can be abstracted
   let matchFunction := if cfg.index then
-   fun (d : SimpTheoremTree) (e : Expr) => ((·.map fun (candidate,_) => candidate) <$> (DiscrTree.getMatchWithExtra d e config))
+   fun (d : SimpTheoremTree) (e : Expr) => ((·.map fun (candidate,_) => candidate) <$>
+   (DiscrTree.getMatchWithExtra d e config))
   else
    fun (d : SimpTheoremTree) (e : Expr) => (·.1) <$> (DiscrTree.getMatchLiberal d e config)
   --a new theorem matches a subExpression of e
   if ← e.anyMTelescoping fun subExpr =>
     newTheorems.anyM (fun thms =>
-      do pure (((← matchFunction thms.post subExpr).filter fun candidate => !(thms.erased.contains candidate.origin)).size > 0))
-  then return false
+      do pure (((← matchFunction thms.post subExpr).any
+      fun candidate => !(thms.erased.contains candidate.origin))))
+    then return false
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
     --can't recheck a dischargeExpression since a contained fvar is no longer in context => invalidate the cacheResult
-    if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then return false
+    if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then
+      return false
     --a new theorem matches a subExpression of a dischargeExpression of e
     if ← dischargeExpression.anyMTelescoping fun subExpr =>
       newTheorems.anyM (fun thms =>
-        do pure (((← matchFunction thms.post subExpr).filter fun candidate => !(thms.erased.contains candidate.origin)).size > 0))
-    then return false
+         do pure (((← matchFunction thms.post subExpr).any
+         fun candidate => !(thms.erased.contains candidate.origin))))
+      then return false
   return true
+
 
 @[export lean_simp]
 def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
@@ -685,21 +691,22 @@ where
       let s := (← get)
       if let some dischargeExpressions := s.negativeCache.find? e then
        if <- negativeCacheResultValid e dischargeExpressions cfg s.newTheorems then
-       return {expr := e}
+        return {expr := e}
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
     simpLoop e
 
 @[inline] def withSimpContext (ctx : Context) (x : MetaM α) : MetaM α :=
   withConfig (fun c => { c with etaStruct := ctx.config.etaStruct }) <| withReducible x
 
-def mainWithNegativeCache (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := {}) (negativeCache : NegativeCache :=  {}) (newTheorems : SimpTheoremsArray := {}) : MetaM (Result × Stats × NegativeCache) := do
+def mainWithNegativeCache (e : Expr) (ctx : Context) (stats : Stats := {}) (methods : Methods := {})
+    (negativeCache : NegativeCache :=  {}) (newTheorems : SimpTheoremsArray := {}) : MetaM (Result × Stats × NegativeCache) := do
   let ctx := { ctx with config := (← ctx.config.updateArith), lctxInitIndices := (← getLCtx).numIndices }
   withSimpContext ctx do
     let (r, s) ← go e methods.toMethodsRef ctx |>.run { stats with negativeCache, newTheorems}
     trace[Meta.Tactic.simp.numSteps] "{s.numSteps}"
     return (r, { s with }, s.negativeCache)
 where
-  go (e : Expr) : SimpM Result  :=
+  go (e : Expr) : SimpM Result :=
     tryCatchRuntimeEx
       (simp e)
       fun ex => do
@@ -732,7 +739,8 @@ end Simp
 open Simp (SimprocsArray Stats)
 
 def simpWithNegativeCache (e : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {}) (newTheorems : SimpTheoremsArray := {}): MetaM (Simp.Result × Stats × Simp.NegativeCache) := do profileitM Exception "simp" (← getOptions) do
+    (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {})
+    (newTheorems : SimpTheoremsArray := {}) : MetaM (Simp.Result × Stats × Simp.NegativeCache) := do profileitM Exception "simp" (← getOptions) do
   match discharge? with
   | none   => Simp.mainWithNegativeCache e ctx stats (methods := Simp.mkDefaultMethodsCore simprocs) negativeCache newTheorems
   | some d => Simp.mainWithNegativeCache e ctx stats (methods := Simp.mkMethods simprocs d (wellBehavedDischarge := false)) negativeCache newTheorems
@@ -748,7 +756,8 @@ def dsimp (e : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[])
 
 /-- See `simpTarget`. This method assumes `mvarId` is not assigned, and we are already using `mvarId`s local context. -/
 def simpTargetCore (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {}) (newTheorems : SimpTheoremsArray := {}) : MetaM (Option MVarId × Stats × Simp.NegativeCache) := do
+    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {})
+    (newTheorems : SimpTheoremsArray := {}) : MetaM (Option MVarId × Stats × Simp.NegativeCache) := do
   let target ← instantiateMVars (← mvarId.getType)
   let (r, stats, negativeCache') ← simpWithNegativeCache target ctx simprocs discharge? stats negativeCache newTheorems
   if mayCloseGoal && r.expr.isTrue then
@@ -760,7 +769,8 @@ def simpTargetCore (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsAr
     return (← applySimpResultToTarget mvarId target r, stats, negativeCache')
 
 def simpTargetWithNegativeCache (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {}) (newTheorems : SimpTheoremsArray := {}) : MetaM (Option MVarId × Stats × Simp.NegativeCache) :=
+    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {})
+    (newTheorems : SimpTheoremsArray := {}) : MetaM (Option MVarId × Stats × Simp.NegativeCache) :=
   mvarId.withContext do
     mvarId.checkNotAssigned `simp
     simpTargetCore mvarId ctx simprocs discharge? mayCloseGoal stats negativeCache newTheorems
@@ -800,7 +810,8 @@ def applySimpResultToFVarId (mvarId : MVarId) (fvarId : FVarId) (r : Simp.Result
   applySimpResultToProp mvarId (mkFVar fvarId) localDecl.type r mayCloseGoal
 
 def simpStepWithNegativeCache (mvarId : MVarId) (proof : Expr) (prop : Expr) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (discharge? : Option Simp.Discharge := none)
-    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {}) (newTheorems : SimpTheoremsArray := {}) : MetaM (Option (Expr × Expr) × Stats × Simp.NegativeCache) := do
+    (mayCloseGoal := true) (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {})
+    (newTheorems : SimpTheoremsArray := {}) : MetaM (Option (Expr × Expr) × Stats × Simp.NegativeCache) := do
   let (r, stats, negativeCache') ← simpWithNegativeCache prop ctx simprocs discharge? stats negativeCache newTheorems
   return (← applySimpResultToProp mvarId proof prop r (mayCloseGoal := mayCloseGoal), stats, negativeCache')
 

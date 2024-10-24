@@ -300,7 +300,8 @@ structure Methods where
   wellBehavedDischarge : Bool := true
   /--
   `defaultDischarge` must **not** be set to `true` unless the default discharger is used.
-  Reason: the mechanism for saving side conditions to recheck when using negative caching across goals is currently built in inside of of it.
+  Reason: the mechanism for saving side conditions to recheck when using negative caching
+  across goals is currently built in inside of of it.
   -/
   defaultDischarge : Bool := false
   deriving Inhabited

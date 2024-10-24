@@ -58,7 +58,7 @@ def discharge?' (thmId : Origin) (x : Expr) (type : Expr) : SimpM Bool := do
         if cfg.memoize && cfg.negativeCaching then
           -- only the default discharger adds the side conditions to be saved for rechecking to the SimpM state
           unless methods.defaultDischarge do
-          modify fun s => {s with negativeCachingNotPossible := true}
+            modify fun s => {s with negativeCachingNotPossible := true}
         modify fun s => { s with usedTheorems }
         return .notProved
   return r = .proved
@@ -218,6 +218,7 @@ where
       for (thm, numExtraArgs) in candidates do
         unless inErasedSet thm || (rflOnly && !thm.rfl) do
           if let some result ← tryTheoremWithExtraArgs? e thm numExtraArgs then
+            trace[Debug.Meta.Tactic.simp] "rewrite result {e} => {result.expr}"
             return some result
       return none
 
@@ -610,7 +611,8 @@ def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
 
 abbrev Discharge := Expr → SimpM (Option Expr)
 
-def mkMethods (s : SimprocsArray) (discharge? : Discharge) (wellBehavedDischarge : Bool) (defaultDischarge : Bool := false) : Methods := {
+def mkMethods (s : SimprocsArray) (discharge? : Discharge) (wellBehavedDischarge : Bool)
+    (defaultDischarge : Bool := false) : Methods := {
   pre        := preDefault s
   post       := postDefault s
   dpre       := dpreDefault s
@@ -621,7 +623,8 @@ def mkMethods (s : SimprocsArray) (discharge? : Discharge) (wellBehavedDischarge
 }
 
 def mkDefaultMethodsCore (simprocs : SimprocsArray) : Methods :=
-  mkMethods simprocs dischargeDefault? (wellBehavedDischarge := true) (defaultDischarge := true)
+  mkMethods simprocs dischargeDefault? (wellBehavedDischarge := true)
+  (defaultDischarge := true)
 
 def mkDefaultMethods : CoreM Methods := do
   if simprocs.get (← getOptions) then

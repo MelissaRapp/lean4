@@ -74,7 +74,8 @@ private partial def loop : M Bool := do
     let simpThmsWithoutEntry := (← getSimpTheorems).eraseTheorem entry.id
     let newThmsWithoutEntry := (← getNewTheorems).eraseTheorem entry.id
     let ctx := { ctx with simpTheorems := simpThmsWithoutEntry }
-    let (r, stats, negativeCache') ← simpStepWithNegativeCache (← get).mvarId entry.proof entry.type ctx simprocs (stats := { (← get) with }) (negativeCache := negativeCache) (newTheorems := newThmsWithoutEntry)
+    let (r, stats, negativeCache') ← simpStepWithNegativeCache (← get).mvarId entry.proof entry.type ctx simprocs (stats := { (← get) with })
+      (negativeCache := negativeCache) (newTheorems := newThmsWithoutEntry)
     modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache' }
     match r with
     | none => return true -- closed the goal
@@ -119,7 +120,8 @@ private partial def loop : M Bool := do
         }
   -- simplify target
   let mvarId := (← get).mvarId
-  let (r, stats, negativeCache') ← simpTargetWithNegativeCache mvarId (← get).ctx simprocs (stats := { (← get) with }) (negativeCache := (← get).negativeCache) (newTheorems := ← getNewTheorems)
+  let (r, stats, negativeCache') ← simpTargetWithNegativeCache mvarId (← get).ctx simprocs (stats := { (← get) with })
+    (negativeCache := (← get).negativeCache) (newTheorems := ← getNewTheorems)
   modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache' }
   match r with
   | none => return true
@@ -160,7 +162,8 @@ def main : M (Option MVarId) := do
 
 end SimpAll
 
-def simpAllWithNegativeCache (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (stats : Stats := {}) (negativeCache : Simp.NegativeCache := {}) : MetaM (Option MVarId × Stats × Simp.NegativeCache) := do
+def simpAllWithNegativeCache (mvarId : MVarId) (ctx : Simp.Context) (simprocs : SimprocsArray := #[]) (stats : Stats := {})
+    (negativeCache : Simp.NegativeCache := {}) : MetaM (Option MVarId × Stats × Simp.NegativeCache) := do
   mvarId.withContext do
     let (r, s) ← SimpAll.main.run { stats with mvarId, ctx, simprocs, negativeCache }
     if let .some mvarIdNew := r then
