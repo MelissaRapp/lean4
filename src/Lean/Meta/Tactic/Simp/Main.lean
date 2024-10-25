@@ -12,6 +12,7 @@ import Lean.Meta.Tactic.Simp.Diagnostics
 import Lean.Meta.Match.Value
 import Lean.Meta.DiscrTree
 import Lean.Util.FindExprTelescoping
+import Lean.Util.FindExprOld
 
 namespace Lean.Meta
 namespace Simp
@@ -646,7 +647,7 @@ where
     cacheResult e cfg r
 
 def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
-    (cfg : Config) (newTheorems : SimpTheoremsArray ) : SimpM Bool := do
+    (cfg : Config) (newTheorems : SimpTheoremsArray ) : SimpM (Bool × Bool) := do
   let config := getDtConfig cfg
   --only extracting the candidates is enough, so the function to get matches from the simp theorems can be abstracted
   let matchFunction := if cfg.index then
@@ -659,19 +660,40 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
     newTheorems.anyM (fun thms =>
       do pure (((← matchFunction thms.post subExpr).any
       fun candidate => !(thms.erased.contains candidate.origin))))
-    then return false
+    then
+      if (← e.findM? fun subExpr =>
+        newTheorems.anyM (fun thms =>
+          if subExpr.hasLooseBVars then return false else
+            do pure (((← matchFunction thms.post subExpr).any
+            fun candidate => !(thms.erased.contains candidate.origin))))).isNone
+        then
+          trace[Meta.Tactic.simp.negativeCache] "notFoundMatch {e}"
+          let x := ← e.anyMTelescoping fun subExpr =>
+           newTheorems.anyM (fun thms =>
+           do if (((← matchFunction thms.post subExpr).any
+           fun candidate => !(thms.erased.contains candidate.origin))) then
+              trace[Meta.Tactic.simp.negativeCache] "matchOn {subExpr} ({repr subExpr})"
+               return true else
+               return false)
+          let y := ← e.findM? fun subExpr =>
+            newTheorems.anyM (fun thms =>
+            do trace[Meta.Tactic.simp.negativeCache]"findMSubExpr {subExpr} ({repr subExpr}) (looseBvar: {subExpr.hasLooseBVars})" if subExpr.hasLooseBVars then return false else
+            do pure (((← matchFunction thms.post subExpr).any
+            fun candidate => !(thms.erased.contains candidate.origin))))
+          return (false, true)
+      return (false, false)
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
     --can't recheck a dischargeExpression since a contained fvar is no longer in context => invalidate the cacheResult
     if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then
-      return false
+      return (false, false)
     --a new theorem matches a subExpression of a dischargeExpression of e
     if ← dischargeExpression.anyMTelescoping fun subExpr =>
       newTheorems.anyM (fun thms =>
          do pure (((← matchFunction thms.post subExpr).any
          fun candidate => !(thms.erased.contains candidate.origin))))
-      then return false
-  return true
+      then return (false, false)
+  return (true, false)
 
 
 @[export lean_simp]
@@ -690,8 +712,13 @@ where
       if cfg.negativeCaching then
       let s := (← get)
       if let some dischargeExpressions := s.negativeCache.find? e then
-       if <- negativeCacheResultValid e dischargeExpressions cfg s.newTheorems then
-        return {expr := e}
+       let (hit, trace) := <- negativeCacheResultValid e dischargeExpressions cfg s.newTheorems
+       if hit then
+        return {expr := e} else
+         let res <- simpLoop e
+         if trace then
+          trace[Meta.Tactic.simp.negativeCache] "actualResultChange: {res.expr != e} for {e}"
+         return res
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
     simpLoop e
 
