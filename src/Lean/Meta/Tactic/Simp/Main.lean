@@ -645,7 +645,7 @@ where
       r ← r.mkEqTrans (← simpLoop r.expr)
     cacheResult e cfg r
 
-def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
+def negativeCacheResultValid (e : Expr) (dischargeExpressions : Array AbstractMVarsResult)
     (cfg : Config) (newTheorems : SimpTheoremsArray ) : SimpM Bool := do
   let config := getDtConfig cfg
   --only extracting the candidates is enough, so the function to get matches from the simp theorems can be abstracted
@@ -654,22 +654,37 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
    (DiscrTree.getMatchWithExtra d e config))
   else
    fun (d : SimpTheoremTree) (e : Expr) => (·.1) <$> (DiscrTree.getMatchLiberal d e config)
+  let checkMatchFun (thm : SimpTheorem) (thms : SimpTheorems) (e : Expr) : SimpM Bool := do withoutModifyingState do
+    if thms.erased.contains thm.origin then return false
+    --try
+    -- let val  ← thm.getValue
+    -- let type ← inferType val
+    -- let (_, _, type) ← forallMetaTelescopeReducing type
+    -- let type ← whnf (← instantiateMVars type)
+    -- let lhs := type.appFn!.appArg!
+    --return (← isDefEq lhs e)
+    --TODO maybe try just defEq here?
+    return (← tryTheorem? e thm).isSome
+    --catch _ => return true
   --a new theorem matches a subExpression of e
   if ← e.anyMTelescoping fun subExpr =>
-    newTheorems.anyM (fun thms =>
-      do pure (((← matchFunction thms.post subExpr).any
-      fun candidate => !(thms.erased.contains candidate.origin))))
-    then return false
+      newTheorems.anyM (fun thms =>
+         do pure ((← (← matchFunction thms.post subExpr).anyM
+         fun candidate => checkMatchFun candidate thms subExpr)))
+      then return false
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
+    trace[Meta.Tactic.simp.negativeCache] "{dischargeExpression.expr}"
+    let (a, b, dischargeExpression) := ← openAbstractMVarsResult dischargeExpression
+    trace[Meta.Tactic.simp.negativeCache] "{dischargeExpression}, {a}"
     --can't recheck a dischargeExpression since a contained fvar is no longer in context => invalidate the cacheResult
     if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then
       return false
     --a new theorem matches a subExpression of a dischargeExpression of e
     if ← dischargeExpression.anyMTelescoping fun subExpr =>
       newTheorems.anyM (fun thms =>
-         do pure (((← matchFunction thms.post subExpr).any
-         fun candidate => !(thms.erased.contains candidate.origin))))
+         do pure ((← (← matchFunction thms.post subExpr).anyM
+         fun candidate => checkMatchFun candidate thms subExpr)))
       then return false
   return true
 

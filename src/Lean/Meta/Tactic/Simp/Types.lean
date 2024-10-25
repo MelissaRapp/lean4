@@ -49,7 +49,7 @@ def Result.mkEqSymm (e : Expr) (r : Simp.Result) : MetaM Simp.Result :=
 -- We use `SExprMap` because we want to discard cached results after a `discharge?`
 abbrev Cache := SExprMap Result
 
-abbrev NegativeCache := ExprMap (HashSet Expr)
+abbrev NegativeCache := ExprMap (Array AbstractMVarsResult)
 
 abbrev CongrCache := ExprMap (Option CongrTheorem)
 
@@ -143,7 +143,7 @@ structure Diagnostics where
 structure State where
   cache        : Cache := {}
   negativeCache: NegativeCache := {}
-  dischargeExpressions: HashSet Expr := {}
+  dischargeExpressions: Array AbstractMVarsResult := {}
   negativeCachingNotPossible: Bool := false
   newTheorems  : SimpTheoremsArray := {}
   congrCache   : CongrCache := {}
@@ -163,6 +163,9 @@ private def MethodsRef : Type := MethodsRefPointed.type
 instance : Nonempty MethodsRef := MethodsRefPointed.property
 
 abbrev SimpM := ReaderT MethodsRef $ ReaderT Context $ StateRefT State MetaM
+instance : MonadBacktrack Meta.SavedState SimpM where
+  saveState := Meta.saveState
+  restoreState s := s.restore
 
 @[extern "lean_simp"]
 opaque simp (e : Expr) : SimpM Result

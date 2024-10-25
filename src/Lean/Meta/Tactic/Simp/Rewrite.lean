@@ -606,7 +606,10 @@ def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
   if r.expr.isTrue then
     return some (← mkOfEqTrue (← r.getProof))
   else
-    modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert r.expr}
+    --TODO what exactly is happening here conceptually? does it make sense?
+    let abstractExpr := ← abstractMVars r.expr
+    unless abstractExpr.expr.hasMVar do
+      modify fun s => {s with dischargeExpressions := s.dischargeExpressions.push abstractExpr}
     return none
 
 abbrev Discharge := Expr → SimpM (Option Expr)
