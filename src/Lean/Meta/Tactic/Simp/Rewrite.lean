@@ -595,9 +595,11 @@ where
       return some mvarId
 
 def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
+  let cfg := (← getConfig)
   let e := e.cleanupAnnotations
   if isEqnThmHypothesis e then
-    modify fun s => {s with negativeCachingNotPossible := true}
+    if cfg.negativeCaching then
+      modify fun s => {s with negativeCachingNotPossible := true}
     if let some r ← dischargeUsingAssumption? e then
       return some r
     if let some r ← dischargeEqnThmHypothesis? e then
@@ -606,7 +608,8 @@ def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
   if r.expr.isTrue then
     return some (← mkOfEqTrue (← r.getProof))
   else
-    modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert r.expr}
+    if cfg.negativeCaching then
+      modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert r.expr}
     return none
 
 abbrev Discharge := Expr → SimpM (Option Expr)
