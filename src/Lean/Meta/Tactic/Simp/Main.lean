@@ -657,14 +657,14 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : Array AbstractMV
   let checkMatchFun (thm : SimpTheorem) (thms : SimpTheorems) (e : Expr) : SimpM Bool := do withoutModifyingState do
     if thms.erased.contains thm.origin then return false
     --try
-    -- let val  ← thm.getValue
-    -- let type ← inferType val
-    -- let (_, _, type) ← forallMetaTelescopeReducing type
-    -- let type ← whnf (← instantiateMVars type)
-    -- let lhs := type.appFn!.appArg!
-    --return (← isDefEq lhs e)
+    let val  ← thm.getValue
+    let type ← inferType val
+    let (_, _, type) ← forallMetaTelescopeReducing type
+    let type ← whnf (← instantiateMVars type)
+    let lhs := type.appFn!.appArg!
+    return (← isDefEq lhs e)
     --TODO maybe try just defEq here?
-    return (← tryTheorem? e thm).isSome
+    --return (← tryTheorem? e thm).isSome
     --catch _ => return true
   --a new theorem matches a subExpression of e
   if ← e.anyMTelescoping fun subExpr =>
@@ -674,9 +674,7 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : Array AbstractMV
       then return false
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
-    trace[Meta.Tactic.simp.negativeCache] "{dischargeExpression.expr}"
-    let (a, b, dischargeExpression) := ← openAbstractMVarsResult dischargeExpression
-    trace[Meta.Tactic.simp.negativeCache] "{dischargeExpression}, {a}"
+    let (_, _, dischargeExpression) := ← openAbstractMVarsResult dischargeExpression
     --can't recheck a dischargeExpression since a contained fvar is no longer in context => invalidate the cacheResult
     if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then
       return false
