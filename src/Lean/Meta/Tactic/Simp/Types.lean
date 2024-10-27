@@ -140,6 +140,20 @@ structure Diagnostics where
   thmsWithBadKeys : PArray SimpTheorem := {}
   deriving Inhabited
 
+structure NegativeCacheStats where
+  exprWithDischExpr : Nat := 0
+  exprWithOutDischExpr : Nat := 0
+  lctxFalseReturns : Nat := 0
+  exprFalseReturns : Nat := 0
+  dischFalseReturns : Nat := 0
+  exprFalseReturnsBeforeCheckingAvailableDisch : Nat := 0
+  trueReturns : Nat := 0
+deriving Inhabited
+
+@[inline] def NegativeCacheStats.mergeStats (s1 s2: NegativeCacheStats) : NegativeCacheStats :=
+  {exprWithDischExpr := s1.exprWithDischExpr + s2.exprWithDischExpr,exprWithOutDischExpr := s1.exprWithOutDischExpr + s2.exprWithOutDischExpr,lctxFalseReturns := s1.lctxFalseReturns + s2.lctxFalseReturns, exprFalseReturns := s1.exprFalseReturns + s2.exprFalseReturns, dischFalseReturns := s1.dischFalseReturns + s2.dischFalseReturns, trueReturns := s1.trueReturns + s2.trueReturns, exprFalseReturnsBeforeCheckingAvailableDisch := s1.exprFalseReturnsBeforeCheckingAvailableDisch + s2.exprFalseReturnsBeforeCheckingAvailableDisch}
+
+
 structure State where
   cache        : Cache := {}
   negativeCache: NegativeCache := {}
@@ -147,11 +161,13 @@ structure State where
   negativeCachingNotPossible: Bool := false
   newTheorems  : SimpTheoremsArray := {}
   congrCache   : CongrCache := {}
+  negativeCacheStats : NegativeCacheStats := {}
   usedTheorems : UsedSimps := {}
   numSteps     : Nat := 0
   diag         : Diagnostics := {}
 
 structure Stats where
+  negativeCacheStats : NegativeCacheStats := {}
   usedTheorems : UsedSimps := {}
   diag : Diagnostics := {}
   deriving Inhabited
@@ -175,7 +191,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { cache, negativeCache, negativeCachingNotPossible,dischargeExpressions, newTheorems, congrCache, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, newTheorems,congrCache, usedTheorems, numSteps, diag := f diag }
+    modify fun { cache, negativeCache, negativeCachingNotPossible,dischargeExpressions, newTheorems, congrCache, negativeCacheStats, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, newTheorems,congrCache, negativeCacheStats ,usedTheorems, numSteps, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.

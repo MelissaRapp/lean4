@@ -667,11 +667,16 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : Array AbstractMV
     --return (← tryTheorem? e thm).isSome
     --catch _ => return true
   --a new theorem matches a subExpression of e
+  if dischargeExpressions.size > 0 then  modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprWithDischExpr := s.negativeCacheStats.exprWithDischExpr + 1 }} else modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprWithOutDischExpr := s.negativeCacheStats.exprWithOutDischExpr + 1 }}
+  --a new theorem matches a subExpression of e
   if ← e.anyMTelescoping fun subExpr =>
-      newTheorems.anyM (fun thms =>
-         do pure ((← (← matchFunction thms.post subExpr).anyM
+    newTheorems.anyM (fun thms =>
+      do pure ((← (← matchFunction thms.post subExpr).anyM
          fun candidate => checkMatchFun candidate thms subExpr)))
-      then return false
+  then
+   modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with exprFalseReturns := s.negativeCacheStats.exprFalseReturns + 1 }}
+    if dischargeExpressions.size > 0 then modify fun s => {s with negativeCacheStats := {s.negativeCacheStats with exprFalseReturnsBeforeCheckingAvailableDisch := s.negativeCacheStats.exprFalseReturnsBeforeCheckingAvailableDisch +1}}
+   return false
   let lctx := (← getLCtx)
   for dischargeExpression in dischargeExpressions do
     trace[Meta.Tactic.simp.negativeCache] "{dischargeExpression.expr}"
@@ -679,13 +684,17 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : Array AbstractMV
     trace[Meta.Tactic.simp.negativeCache] "{dischargeExpression}, {a}"
     --can't recheck a dischargeExpression since a contained fvar is no longer in context => invalidate the cacheResult
     if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then
-      return false
+     modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with lctxFalseReturns := s.negativeCacheStats.lctxFalseReturns + 1 }}
+     return false
     --a new theorem matches a subExpression of a dischargeExpression of e
     if ← dischargeExpression.anyMTelescoping fun subExpr =>
       newTheorems.anyM (fun thms =>
-         do pure ((← (← matchFunction thms.post subExpr).anyM
+        do pure ((← (← matchFunction thms.post subExpr).anyM
          fun candidate => checkMatchFun candidate thms subExpr)))
-      then return false
+    then
+     modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with dischFalseReturns := s.negativeCacheStats.dischFalseReturns + 1 }}
+     return false
+  modify fun s => { s with negativeCacheStats := {s.negativeCacheStats with trueReturns := s.negativeCacheStats.trueReturns + 1 }}
   return true
 
 
