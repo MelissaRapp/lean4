@@ -172,7 +172,7 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { cache, negativeCache, negativeCachingNotPossible,dischargeExpressions, newTheorems, congrCache, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, newTheorems,congrCache, usedTheorems, numSteps, diag := f diag }
+    modify fun { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, newTheorems, congrCache, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, newTheorems, congrCache, usedTheorems, numSteps, diag := f diag }
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
