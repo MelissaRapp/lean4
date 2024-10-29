@@ -479,14 +479,15 @@ def seval (e : Expr) : SimpM Result := do
   let m ← mkSEvalMethods
   let ctx ← mkSEvalContext
   let cacheSaved := (← get).cache
+  let negativeCacheSaved := (← get).negativeCache
   let usedTheoremsSaved := (← get).usedTheorems
   try
     withReader (fun _ => m.toMethodsRef) do
     withTheReader Simp.Context (fun _ => ctx) do
-    modify fun s => { s with cache := {}, usedTheorems := {} }
+    modify fun s => { s with cache := {}, usedTheorems := {}, negativeCache := {} }
     simp e
   finally
-    modify fun s => { s with cache := cacheSaved, usedTheorems := usedTheoremsSaved }
+    modify fun s => { s with cache := cacheSaved, usedTheorems := usedTheoremsSaved, negativeCache := negativeCacheSaved }
 
 /--
 Try to unfold ground term in the ground/symbolic evaluator.
