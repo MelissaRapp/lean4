@@ -49,7 +49,7 @@ def Result.mkEqSymm (e : Expr) (r : Simp.Result) : MetaM Simp.Result :=
 -- We use `SExprMap` because we want to discard cached results after a `discharge?`
 abbrev Cache := SExprMap Result
 
-abbrev NegativeCache := ExprMap (HashSet Expr)
+abbrev NegativeCache := ExprMap (Std.HashSet Expr)
 
 abbrev CongrCache := ExprMap (Option CongrTheorem)
 
@@ -144,7 +144,7 @@ structure State where
   cache                      : Cache := {}
   localHyps                  : SimpTheoremsArray := {}
   negativeCache              : NegativeCache := {}
-  dischargeExpressions       : HashSet Expr := {}
+  dischargeExpressions       : Std.HashSet Expr := {}
   negativeCachingNotPossible : Bool := false
   congrCache                 : CongrCache := {}
   usedTheorems               : UsedSimps := {}

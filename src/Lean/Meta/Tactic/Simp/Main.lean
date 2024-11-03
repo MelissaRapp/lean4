@@ -695,7 +695,7 @@ private def findMTelescoping? [Monad m] [MonadControlT MetaM m] [MonadTrace m] (
 private def anyMTelescoping [Monad m] [MonadControlT MetaM m] [MonadTrace m] (e : Expr) (p : Expr → m Bool)  : m Bool := do
   pure (<-findMTelescoping? e p).isSome
 
-def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
+def negativeCacheResultValid (e : Expr) (dischargeExpressions : Std.HashSet Expr)
     (cfg : Config) (localHyps : SimpTheoremsArray ) : SimpM Bool := do
   let config := getDtConfig cfg
   --only extracting the candidates is enough, so the function to get matches from the simp theorems can be abstracted
@@ -739,7 +739,7 @@ where
         return result
       if cfg.negativeCaching then
       let s := (← get)
-      if let some dischargeExpressions := s.negativeCache.find? e then
+      if let some dischargeExpressions := s.negativeCache.get? e then
        if <- NegativeCacheResultValid.negativeCacheResultValid e dischargeExpressions cfg s.localHyps then
         return {expr := e}
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
