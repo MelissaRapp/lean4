@@ -168,8 +168,8 @@ private def checkHeader (r : ElabHeaderResult) (numParams : Nat) (firstType? : O
 
 -- Auxiliary function for checking whether the types in mutually inductive declaration are compatible.
 private partial def checkHeaders (rs : Array ElabHeaderResult) (numParams : Nat) (i : Nat) (firstType? : Option Expr) : TermElabM Unit := do
-  if i < rs.size then
-    let type ← checkHeader rs[i]! numParams firstType?
+  if h : i < rs.size then
+    let type ← checkHeader rs[i] numParams firstType?
     checkHeaders rs numParams (i+1) type
 
 private def elabHeader (views : Array InductiveView) : TermElabM (Array ElabHeaderResult) := do
@@ -222,11 +222,11 @@ private def replaceArrowBinderNames (type : Expr) (newNames : Array Name) : Expr
   go type 0
 where
   go (type : Expr) (i : Nat) : Expr :=
-    if i < newNames.size then
+    if h : i < newNames.size then
       match type with
       | .forallE n d b bi =>
         if n.hasMacroScopes then
-          mkForall newNames[i]! bi d (go b (i+1))
+          mkForall newNames[i] bi d (go b (i+1))
         else
           mkForall n bi d (go b (i+1))
       | _ => type
@@ -630,7 +630,7 @@ private def replaceIndFVarsWithConsts (views : Array InductiveView) (indFVars : 
         let type := type.replace fun e =>
           if !e.isFVar then
             none
-          else match indFVar2Const.find? e with
+          else match indFVar2Const[e]? with
             | none   => none
             | some c => mkAppN c (params.extract 0 numVars)
         instantiateMVars (← mkForallFVars params type)
@@ -771,6 +771,7 @@ private def mkInductiveDecl (vars : Array Expr) (views : Array InductiveView) : 
   let isUnsafe          := view0.modifiers.isUnsafe
   withRef view0.ref <| Term.withLevelNames allUserLevelNames do
     let rs ← elabHeader views
+    Term.synthesizeSyntheticMVarsNoPostponing
     withInductiveLocalDecls rs fun params indFVars => do
       trace[Elab.inductive] "indFVars: {indFVars}"
       let mut indTypesArray := #[]
@@ -778,11 +779,19 @@ private def mkInductiveDecl (vars : Array Expr) (views : Array InductiveView) : 
         let indFVar := indFVars[i]!
         Term.addLocalVarInfo views[i]!.declId indFVar
         let r     := rs[i]!
-        let type  := r.type |>.abstract r.params |>.instantiateRev params
+        /- At this point, because of `withInductiveLocalDecls`, the only fvars that are in context are the ones related to the first inductive type.
+           Because of this, we need to replace the fvars present in each inductive type's header of the mutual block with those of the first inductive.
+           However, some mvars may still be uninstantiated there, and might hide some of the old fvars.
+           As such we first need to synthesize all possible mvars at this stage, instantiate them in the header types and only
+           then replace the parameters' fvars in the header type.
+
+           See issue #3242 (`https://github.com/leanprover/lean4/issues/3242`)
+        -/
+        let type  ←  instantiateMVars r.type
+        let type  := type.replaceFVars r.params params
         let type  ← mkForallFVars params type
         let ctors ← withExplicitToImplicit params (elabCtors indFVars indFVar params r)
         indTypesArray := indTypesArray.push { name := r.view.declName, type, ctors }
-      Term.synthesizeSyntheticMVarsNoPostponing
       let numExplicitParams ← fixedIndicesToParams params.size indTypesArray indFVars
       trace[Elab.inductive] "numExplicitParams: {numExplicitParams}"
       let indTypes := indTypesArray.toList

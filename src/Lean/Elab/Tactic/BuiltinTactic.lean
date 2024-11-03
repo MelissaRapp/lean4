@@ -90,6 +90,7 @@ where
         withAlwaysResolvedPromise fun finished => do
           withAlwaysResolvedPromise fun inner => do
             snap.new.resolve <| .mk {
+              desc := tac.getKind.toString
               diagnostics := .empty
               stx := tac
               inner? := some { range?, task := inner.result }
@@ -458,6 +459,8 @@ def renameInaccessibles (mvarId : MVarId) (hs : TSyntaxArray ``binderIdent) : Ta
       match lctx.getAt? j with
       | none => pure ()
       | some localDecl =>
+        if localDecl.isImplementationDetail then
+          continue
         let inaccessible := !(extractMacroScopes localDecl.userName |>.equalScope callerScopes)
         let shadowed := found.contains localDecl.userName
         if inaccessible || shadowed then
@@ -518,14 +521,16 @@ where
 @[builtin_tactic «case», builtin_incremental]
 def evalCase : Tactic
   | stx@`(tactic| case $[$tag $hs*]|* =>%$arr $tac:tacticSeq1Indented) =>
-    for tag in tag, hs in hs do
-      let (g, gs) ← getCaseGoals tag
-      let g ← renameInaccessibles g hs
-      setGoals [g]
-      g.setTag Name.anonymous
-      withCaseRef arr tac <| closeUsingOrAdmit <| withTacticInfoContext stx <|
-        Term.withNarrowedArgTacticReuse (argIdx := 3) (evalTactic ·) stx
-      setGoals gs
+    -- disable incrementality if body is run multiple times
+    Term.withoutTacticIncrementality (tag.size > 1) do
+      for tag in tag, hs in hs do
+        let (g, gs) ← getCaseGoals tag
+        let g ← renameInaccessibles g hs
+        setGoals [g]
+        g.setTag Name.anonymous
+        withCaseRef arr tac <| closeUsingOrAdmit <| withTacticInfoContext stx <|
+          Term.withNarrowedArgTacticReuse (argIdx := 3) (evalTactic ·) stx
+        setGoals gs
   | _ => throwUnsupportedSyntax
 
 @[builtin_tactic «case'»] def evalCase' : Tactic

@@ -119,7 +119,7 @@ def getRecArgInfos (fnName : Name) (xs : Array Expr) (value : Expr)
     (termArg? : Option TerminationArgument) : MetaM (Array RecArgInfo × MessageData) := do
   lambdaTelescope value fun ys _ => do
     if let .some termArg := termArg? then
-      -- User explictly asked to use a certain argument, so throw errors eagerly
+      -- User explicitly asked to use a certain argument, so throw errors eagerly
       let recArgInfo ← withRef termArg.ref do
         mapError (f := (m!"cannot use specified parameter for structural recursion:{indentD ·}")) do
           getRecArgInfo fnName xs.size (xs ++ ys) (← termArg.structuralArg)
@@ -146,7 +146,7 @@ See issue #837 for an example where we can show termination using the index of a
 we don't get the desired definitional equalities.
 -/
 def nonIndicesFirst (recArgInfos : Array RecArgInfo) : Array RecArgInfo := Id.run do
-  let mut indicesPos : HashSet Nat := {}
+  let mut indicesPos : Std.HashSet Nat := {}
   for recArgInfo in recArgInfos do
     for pos in recArgInfo.indicesPos do
       indicesPos := indicesPos.insert pos
@@ -189,7 +189,7 @@ def argsInGroup (group : IndGroupInst) (xs : Array Expr) (value : Expr)
     if (← group.isDefEq recArgInfo.indGroupInst) then
       return (.some recArgInfo)
 
-    -- Can this argument be understood as the auxillary type former of a nested inductive?
+    -- Can this argument be understood as the auxiliary type former of a nested inductive?
     if nestedTypeFormers.isEmpty then return .none
     lambdaTelescope value fun ys _ => do
       let x := (xs++ys)[recArgInfo.recArgPos]!
