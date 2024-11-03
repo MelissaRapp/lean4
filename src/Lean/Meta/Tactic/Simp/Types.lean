@@ -141,15 +141,15 @@ structure Diagnostics where
   deriving Inhabited
 
 structure State where
-  cache        : Cache := {}
-  negativeCache: NegativeCache := {}
-  dischargeExpressions: HashSet Expr := {}
-  negativeCachingNotPossible: Bool := false
-  localHyps  : SimpTheoremsArray := {}
-  congrCache   : CongrCache := {}
-  usedTheorems : UsedSimps := {}
-  numSteps     : Nat := 0
-  diag         : Diagnostics := {}
+  cache                      : Cache := {}
+  localHyps                  : SimpTheoremsArray := {}
+  negativeCache              : NegativeCache := {}
+  dischargeExpressions       : HashSet Expr := {}
+  negativeCachingNotPossible : Bool := false
+  congrCache                 : CongrCache := {}
+  usedTheorems               : UsedSimps := {}
+  numSteps                   : Nat := 0
+  diag                       : Diagnostics := {}
 
 structure Stats where
   usedTheorems : UsedSimps := {}
