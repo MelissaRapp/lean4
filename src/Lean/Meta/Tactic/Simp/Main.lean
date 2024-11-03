@@ -11,7 +11,6 @@ import Lean.Meta.Tactic.Simp.Rewrite
 import Lean.Meta.Tactic.Simp.Diagnostics
 import Lean.Meta.Match.Value
 import Lean.Meta.DiscrTree
-import Lean.Util.FindExprTelescoping
 
 namespace Lean.Meta
 namespace Simp
@@ -645,6 +644,55 @@ where
       r ← r.mkEqTrans (← simpLoop r.expr)
     cacheResult e cfg r
 
+namespace NegativeCacheResultValid
+namespace FindImplTelescoping
+private unsafe abbrev FindM (m) := StateT (PtrSet Expr) m
+
+@[inline] private unsafe def checkVisited [Monad m] (e : Expr) : OptionT (FindM m) Unit := do
+  if (← get).contains e then
+    failure
+  modify fun s => s.insert e
+
+private unsafe def findMTelescoping? [Monad m] [MonadControlT MetaM m] (e : Expr)
+  (p : Expr → m Bool) : OptionT (FindM m) Expr :=
+  let rec visit (e : Expr) := do
+    checkVisited e
+    if ← p e then
+      pure e
+    else match e with
+      | .forallE _ d b _ => visit d <|> forallTelescope e fun xs _ => visit (b.instantiate xs)
+      | .lam _ d b _     => visit d <|> lambdaTelescope e fun xs _ => visit (b.instantiate xs)
+      | .mdata _ b       => visit b
+      | .letE _ t v b _  => visit t <|> visit v <|> lambdaLetTelescope e fun xs _ => visit (b.instantiate xs)
+      | .app f a         => visit f <|> visit a
+      | .proj _ _ b      => visit b
+      | _                => failure
+  visit e
+
+private unsafe def findUnsafeMTelescoping? {m} [Monad m] [MonadControlT MetaM m]  [MonadTrace m]
+  (e : Expr) (p : Expr → m Bool) : m (Option Expr) :=
+  findMTelescoping? e p |>.run' mkPtrSet
+
+end FindImplTelescoping
+
+@[implemented_by FindImplTelescoping.findUnsafeMTelescoping?]
+/- This is a reference implementation for the unsafe one above -/
+private def findMTelescoping? [Monad m] [MonadControlT MetaM m] [MonadTrace m] (e : Expr)
+  (p : Expr → m Bool) : m (Option Expr) := do
+  if ← p e then
+    return some e
+  else match e with
+    | .forallE _ d b _ => findMTelescoping? d p <||> findMTelescoping? b p
+    | .lam _ d b _     => findMTelescoping? d p <||> findMTelescoping? b p
+    | .mdata _ b       => findMTelescoping? b p
+    | .letE _ t v b _  => findMTelescoping? t p <||> findMTelescoping? v p <||> findMTelescoping? b p
+    | .app f a         => findMTelescoping? f p <||> findMTelescoping? a p
+    | .proj _ _ b      => findMTelescoping? b p
+    | _                => pure none
+
+private def anyMTelescoping [Monad m] [MonadControlT MetaM m] [MonadTrace m] (e : Expr) (p : Expr → m Bool)  : m Bool := do
+  pure (<-findMTelescoping? e p).isSome
+
 def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
     (cfg : Config) (localHyps : SimpTheoremsArray ) : SimpM Bool := do
   let config := getDtConfig cfg
@@ -655,7 +703,7 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
   else
    fun (d : SimpTheoremTree) (e : Expr) => (·.1) <$> (DiscrTree.getMatchLiberal d e config)
   --a new theorem matches a subExpression of e
-  if ← e.anyMTelescoping fun subExpr =>
+  if ← anyMTelescoping e fun subExpr =>
     localHyps.anyM (fun thms =>
       do pure (((← matchFunction thms.post subExpr).any
       fun candidate => !(thms.erased.contains candidate.origin))))
@@ -666,13 +714,13 @@ def negativeCacheResultValid (e : Expr) (dischargeExpressions : HashSet Expr)
     if dischargeExpression.hasAnyFVar (fun fvarId => !lctx.contains fvarId) then
       return false
     --a new theorem matches a subExpression of a dischargeExpression of e
-    if ← dischargeExpression.anyMTelescoping fun subExpr =>
+    if ← anyMTelescoping dischargeExpression fun subExpr =>
       localHyps.anyM (fun thms =>
          do pure (((← matchFunction thms.post subExpr).any
          fun candidate => !(thms.erased.contains candidate.origin))))
       then return false
   return true
-
+end NegativeCacheResultValid
 
 @[export lean_simp]
 def simpImpl (e : Expr) : SimpM Result := withIncRecDepth do
@@ -690,7 +738,7 @@ where
       if cfg.negativeCaching then
       let s := (← get)
       if let some dischargeExpressions := s.negativeCache.find? e then
-       if <- negativeCacheResultValid e dischargeExpressions cfg s.localHyps then
+       if <- NegativeCacheResultValid.negativeCacheResultValid e dischargeExpressions cfg s.localHyps then
         return {expr := e}
     trace[Meta.Tactic.simp.heads] "{repr e.toHeadIndex}"
     simpLoop e
