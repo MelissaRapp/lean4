@@ -32,7 +32,7 @@ structure State where
   usedTheorems : Simp.UsedSimps := {}
   diag         : Simp.Diagnostics := {}
   negativeCache: Simp.NegativeCache := {}
-  newTheorems  : SimpTheoremsArray := {}
+  localHyps  : SimpTheoremsArray := {}
 
 abbrev M := StateRefT State MetaM
 
@@ -40,15 +40,15 @@ private def initEntries : M Unit := do
   let hs ←  (← get).mvarId.withContext do getPropHyps
   let hsNonDeps ← (← get).mvarId.getNondepPropHyps
   let mut simpThms := (← get).ctx.simpTheorems
-  let mut newThms : SimpTheoremsArray := {}
+  let mut localHyps : SimpTheoremsArray := {}
   let negativeCaching := (← get).ctx.config.negativeCaching
   for h in hs do
     unless simpThms.isErased (.fvar h) do
       let localDecl ← h.getDecl
       let proof  := localDecl.toExpr
       simpThms ← simpThms.addTheorem (.fvar h) proof
-      if negativeCaching then newThms ← newThms.addTheorem (.fvar h) proof
-      modify fun s => { s with ctx.simpTheorems := simpThms, newTheorems := newThms }
+      if negativeCaching then localHyps ← localHyps.addTheorem (.fvar h) proof
+      modify fun s => { s with ctx.simpTheorems := simpThms, localHyps := localHyps }
       if hsNonDeps.contains h then
         -- We only simplify nondependent hypotheses
         let type ← instantiateMVars localDecl.type
@@ -58,8 +58,8 @@ private def initEntries : M Unit := do
 private abbrev getSimpTheorems : M SimpTheoremsArray :=
   return (← get).ctx.simpTheorems
 
-private abbrev getNewTheorems : M SimpTheoremsArray :=
-  return (← get).newTheorems
+private abbrev getLocalHyps : M SimpTheoremsArray :=
+  return (← get).localHyps
 
 private partial def loop : M Bool := do
   modify fun s => { s with modified := false }
@@ -72,10 +72,10 @@ private partial def loop : M Bool := do
     let ctx := (← get).ctx
     -- We disable the current entry to prevent it to be simplified to `True`
     let simpThmsWithoutEntry := (← getSimpTheorems).eraseTheorem entry.id
-    let newThmsWithoutEntry := (← getNewTheorems).eraseTheorem entry.id
+    let localHypsWithoutEntry := (← getLocalHyps).eraseTheorem entry.id
     let ctx := { ctx with simpTheorems := simpThmsWithoutEntry }
     let (r, stats, negativeCache') ← simpStepWithNegativeCache (← get).mvarId entry.proof entry.type ctx simprocs (stats := { (← get) with })
-      (negativeCache := negativeCache) (newTheorems := newThmsWithoutEntry)
+      (negativeCache := negativeCache) (localHyps := localHypsWithoutEntry)
     modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache' }
     match r with
     | none => return true -- closed the goal
@@ -108,20 +108,20 @@ private partial def loop : M Bool := do
         let mut simpThmsNew := (← getSimpTheorems).eraseTheorem (.fvar entry.fvarId)
         let idNew ← mkFreshId
         simpThmsNew ← simpThmsNew.addTheorem (.other idNew) (← mkExpectedTypeHint proofNew typeNew)
-        let mut newThmsNew : SimpTheoremsArray := {}
+        let mut localHypsNew : SimpTheoremsArray := {}
         if negativeCaching then
-         newThmsNew := (← getNewTheorems).eraseTheorem (.fvar entry.fvarId)
-         newThmsNew ← newThmsNew.addTheorem (.other idNew) (← mkExpectedTypeHint proofNew typeNew)
+         localHypsNew := (← getLocalHyps).eraseTheorem (.fvar entry.fvarId)
+         localHypsNew ← localHypsNew.addTheorem (.other idNew) (← mkExpectedTypeHint proofNew typeNew)
         modify fun s => { s with
           modified         := true
           ctx.simpTheorems := simpThmsNew
           entries[i]       := { entry with type := typeNew, proof := proofNew, id := .other idNew }
-          newTheorems := newThmsNew
+          localHyps := localHypsNew
         }
   -- simplify target
   let mvarId := (← get).mvarId
   let (r, stats, negativeCache') ← simpTargetWithNegativeCache mvarId (← get).ctx simprocs (stats := { (← get) with })
-    (negativeCache := (← get).negativeCache) (newTheorems := ← getNewTheorems)
+    (negativeCache := (← get).negativeCache) (localHyps := ← getLocalHyps)
   modify fun s => { s with usedTheorems := stats.usedTheorems, diag := stats.diag, negativeCache := negativeCache' }
   match r with
   | none => return true
