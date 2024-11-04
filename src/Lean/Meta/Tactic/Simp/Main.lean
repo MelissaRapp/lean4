@@ -619,7 +619,7 @@ partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do
     throwError "simp failed, maximum number of steps exceeded"
   else
     checkSystem "simp"
-    modify fun s => { s with numSteps := s.numSteps + 1, negativeCachingNotPossible := false, dischargeExpressions := {} }
+    modify fun s => { s with numSteps := s.numSteps + 1}
     match (← pre e) with
     | .done r  => cacheResult e cfg r
     | .visit r => cacheResult e cfg (← r.mkEqTrans (← simpLoop r.expr))
