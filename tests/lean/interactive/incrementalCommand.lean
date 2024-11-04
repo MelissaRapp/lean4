@@ -67,3 +67,30 @@ import Init.Prelude
                  --^ insert: " "
                  --^ collectDiagnostics
 #eval "import"
+
+/-!
+`where` should not break incrementality
+(used to fail with "(kernel) declaration has metavariables '_example'")
+-/
+-- RESET
+example : False := by
+  trivial
+where
+  bar : True := by
+    trivial
+         --^ sync
+         --^ insert: " "
+         --^ collectDiagnostics
+
+/-!
+A reuse bug led to deletions after the header skipping a prefix of the next command on further edits
+-/
+-- RESET
+--asdf
+--^ delete: "a"
+--^ sync
+def f := 1  -- used to raise "unexpected identifier" after edit below because we would start parsing
+            -- on "ef"
+def g := 2
+   --^ insert: "g"
+   --^ collectDiagnostics

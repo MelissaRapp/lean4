@@ -60,6 +60,10 @@ structure Scope where
   that capture these variables.
   -/
   varUIds       : Array Name := #[]
+  /-- `include`d section variable names (from `varUIds`) -/
+  includedVars  : List Name := []
+  /-- `omit`ted section variable names (from `varUIds`) -/
+  omittedVars  : List Name := []
   /--
   If true (default: false), all declarations that fail to compile
   automatically receive the `noncomputable` modifier.
@@ -201,12 +205,12 @@ def mkMessageAux (ctx : Context) (ref : Syntax) (msgData : MessageData) (severit
 
 private def addTraceAsMessagesCore (ctx : Context) (log : MessageLog) (traceState : TraceState) : MessageLog := Id.run do
   if traceState.traces.isEmpty then return log
-  let mut traces : HashMap (String.Pos × String.Pos) (Array MessageData) := ∅
+  let mut traces : Std.HashMap (String.Pos × String.Pos) (Array MessageData) := ∅
   for traceElem in traceState.traces do
     let ref := replaceRef traceElem.ref ctx.ref
     let pos := ref.getPos?.getD 0
     let endPos := ref.getTailPos?.getD pos
-    traces := traces.insert (pos, endPos) <| traces.findD (pos, endPos) #[] |>.push traceElem.msg
+    traces := traces.insert (pos, endPos) <| traces.getD (pos, endPos) #[] |>.push traceElem.msg
   let mut log := log
   let traces' := traces.toArray.qsort fun ((a, _), _) ((b, _), _) => a < b
   for ((pos, endPos), traceMsg) in traces' do
@@ -310,7 +314,11 @@ def runLinters (stx : Syntax) : CommandElabM Unit := do
             try
               linter.run stx
             catch ex =>
-              logException ex
+              match ex with
+              | Exception.error ref msg =>
+                logException (.error ref m!"linter {linter.name} failed: {msg}")
+              | Exception.internal _ _ =>
+                logException ex
             finally
               modify fun s => { savedState with messages := s.messages }
 
@@ -520,12 +528,12 @@ def elabCommandTopLevel (stx : Syntax) : CommandElabM Unit := withRef stx do pro
     let mut msgs := (← get).messages
     for tree in (← getInfoTrees) do
       trace[Elab.info] (← tree.format)
-    if let some snap := (← read).snap? then
-      -- We can assume that the root command snapshot is not involved in parallelism yet, so this
-      -- should be true iff the command supports incrementality
-      if (← IO.hasFinished snap.new.result) then
-        trace[Elab.snapshotTree]
-          (←Language.ToSnapshotTree.toSnapshotTree snap.new.result.get |>.format)
+    if (← isTracingEnabledFor `Elab.snapshotTree) then
+      if let some snap := (← read).snap? then
+        -- We can assume that the root command snapshot is not involved in parallelism yet, so this
+        -- should be true iff the command supports incrementality
+        if (← IO.hasFinished snap.new.result) then
+          liftCoreM <| Language.ToSnapshotTree.toSnapshotTree snap.new.result.get |>.trace
     modify fun st => { st with
       messages := initMsgs ++ msgs
       infoState := { st.infoState with trees := initInfoTrees ++ st.infoState.trees }
@@ -549,19 +557,21 @@ private def mkMetaContext : Meta.Context := {
 
 open Lean.Parser.Term in
 /-- Return identifier names in the given bracketed binder. -/
-def getBracketedBinderIds : Syntax → Array Name
-  | `(bracketedBinderF|($ids* $[: $ty?]? $(_annot?)?)) => ids.map Syntax.getId
-  | `(bracketedBinderF|{$ids* $[: $ty?]?})             => ids.map Syntax.getId
-  | `(bracketedBinderF|[$id : $_])                     => #[id.getId]
-  | `(bracketedBinderF|[$_])                           => #[Name.anonymous]
-  | _                                                 => #[]
+def getBracketedBinderIds : Syntax → CommandElabM (Array Name)
+  | `(bracketedBinderF|($ids* $[: $ty?]? $(_annot?)?)) => return ids.map Syntax.getId
+  | `(bracketedBinderF|{$ids* $[: $ty?]?})             => return ids.map Syntax.getId
+  | `(bracketedBinderF|⦃$ids* : $_⦄)                   => return ids.map Syntax.getId
+  | `(bracketedBinderF|[$id : $_])                     => return #[id.getId]
+  | `(bracketedBinderF|[$_])                           => return #[Name.anonymous]
+  | _                                                  => throwUnsupportedSyntax
 
-private def mkTermContext (ctx : Context) (s : State) : Term.Context := Id.run do
+private def mkTermContext (ctx : Context) (s : State) : CommandElabM Term.Context := do
   let scope      := s.scopes.head!
   let mut sectionVars := {}
-  for id in scope.varDecls.concatMap getBracketedBinderIds, uid in scope.varUIds do
+  for id in (← scope.varDecls.concatMapM getBracketedBinderIds), uid in scope.varUIds do
     sectionVars := sectionVars.insert id uid
-  { macroStack             := ctx.macroStack
+  return {
+    macroStack             := ctx.macroStack
     sectionVars            := sectionVars
     isNoncomputableSection := scope.isNoncomputable
     tacticCache?           := ctx.tacticCache? }
@@ -601,7 +611,7 @@ def liftTermElabM (x : TermElabM α) : CommandElabM α := do
   -- make sure `observing` below also catches runtime exceptions (like we do by default in
   -- `CommandElabM`)
   let _ := MonadAlwaysExcept.except (m := TermElabM)
-  let x : MetaM _ := (observing (try x finally Meta.reportDiag)).run (mkTermContext ctx s) { levelNames := scope.levelNames }
+  let x : MetaM _ := (observing (try x finally Meta.reportDiag)).run (← mkTermContext ctx s) { levelNames := scope.levelNames }
   let x : CoreM _ := x.run mkMetaContext {}
   let ((ea, _), _) ← runCore x
   MonadExcept.ofExcept ea
@@ -698,7 +708,7 @@ def expandDeclId (declId : Syntax) (modifiers : Modifiers) : CommandElabM Expand
   let currNamespace ← getCurrNamespace
   let currLevelNames ← getLevelNames
   let r ← Elab.expandDeclId currNamespace currLevelNames declId modifiers
-  for id in (← getScope).varDecls.concatMap getBracketedBinderIds do
+  for id in (← (← getScope).varDecls.concatMapM getBracketedBinderIds) do
     if id == r.shortName then
       throwError "invalid declaration name '{r.shortName}', there is a section variable with the same name"
   return r

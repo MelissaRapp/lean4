@@ -58,7 +58,7 @@ def discharge?' (thmId : Origin) (x : Expr) (type : Expr) : SimpM Bool := do
         if cfg.memoize && cfg.negativeCaching then
           -- only the default discharger adds the side conditions to be saved for rechecking to the SimpM state
           unless methods.defaultDischarge do
-          modify fun s => {s with negativeCachingNotPossible := true}
+            modify fun s => {s with negativeCachingNotPossible := true}
         modify fun s => { s with usedTheorems }
         return .notProved
   return r = .proved
@@ -218,6 +218,7 @@ where
       for (thm, numExtraArgs) in candidates do
         unless inErasedSet thm || (rflOnly && !thm.rfl) do
           if let some result ← tryTheoremWithExtraArgs? e thm numExtraArgs then
+            trace[Debug.Meta.Tactic.simp] "rewrite result {e} => {result.expr}"
             return some result
       return none
 
@@ -259,19 +260,6 @@ where
 
   inErasedSet (thm : SimpTheorem) : Bool :=
     erased.contains thm.origin
-
-def simpCtorEq : Simproc := fun e => withReducibleAndInstances do
-  match e.eq? with
-  | none => return .continue
-  | some (_, lhs, rhs) =>
-    match (← constructorApp'? lhs), (← constructorApp'? rhs) with
-    | some (c₁, _), some (c₂, _) =>
-      if c₁.name != c₂.name then
-        withLocalDeclD `h e fun h =>
-          return .done { expr := mkConst ``False, proof? := (← withDefault <| mkEqFalse' (← mkLambdaFVars #[h] (← mkNoConfusion (mkConst ``False) h))) }
-      else
-        return .continue
-    | _, _ => return .continue
 
 @[inline] def simpUsingDecide : Simproc := fun e => do
   unless (← getConfig).decide do
@@ -338,8 +326,8 @@ def simpMatchDiscrs? (info : MatcherInfo) (e : Expr) : SimpM (Option Result) := 
       r ← mkCongrFun r argNew
   unless modified do
     return none
-  for i in [info.numDiscrs : args.size] do
-    let arg := args[i]!
+  for h : i in [info.numDiscrs : args.size] do
+    let arg := args[i]
     r ← mkCongrFun r arg
   return some r
 
@@ -378,13 +366,13 @@ def rewritePost (rflOnly := false) : Simproc := fun e => do
 
 def drewritePre : DSimproc := fun e => do
   for thms in (← getContext).simpTheorems do
-    if let some r ← rewrite? e thms.pre thms.erased (tag := "pre") (rflOnly := true) then
+    if let some r ← rewrite? e thms.pre thms.erased (tag := "dpre") (rflOnly := true) then
       return .visit r.expr
   return .continue
 
 def drewritePost : DSimproc := fun e => do
   for thms in (← getContext).simpTheorems do
-    if let some r ← rewrite? e thms.post thms.erased (tag := "post") (rflOnly := true) then
+    if let some r ← rewrite? e thms.post thms.erased (tag := "dpost") (rflOnly := true) then
       return .visit r.expr
   return .continue
 
@@ -451,8 +439,7 @@ partial def preSEval (s : SimprocsArray) : Simproc :=
 def postSEval (s : SimprocsArray) : Simproc :=
   rewritePost >>
   userPostSimprocs s >>
-  sevalGround >>
-  simpCtorEq
+  sevalGround
 
 def mkSEvalMethods : CoreM Methods := do
   let s ← getSEvalSimprocs
@@ -478,14 +465,15 @@ def seval (e : Expr) : SimpM Result := do
   let m ← mkSEvalMethods
   let ctx ← mkSEvalContext
   let cacheSaved := (← get).cache
+  let negativeCacheSaved := (← get).negativeCache
   let usedTheoremsSaved := (← get).usedTheorems
   try
     withReader (fun _ => m.toMethodsRef) do
     withTheReader Simp.Context (fun _ => ctx) do
-    modify fun s => { s with cache := {}, usedTheorems := {} }
+    modify fun s => { s with cache := {}, usedTheorems := {}, negativeCache := {} }
     simp e
   finally
-    modify fun s => { s with cache := cacheSaved, usedTheorems := usedTheoremsSaved }
+    modify fun s => { s with cache := cacheSaved, usedTheorems := usedTheoremsSaved, negativeCache := negativeCacheSaved }
 
 /--
 Try to unfold ground term in the ground/symbolic evaluator.
@@ -520,7 +508,6 @@ def postDefault (s : SimprocsArray) : Simproc :=
   userPostSimprocs s >>
   simpGround >>
   simpArith >>
-  simpCtorEq >>
   simpUsingDecide
 
 /--
@@ -593,24 +580,45 @@ where
     catch _  =>
       return some mvarId
 
+/--
+Discharges assumptions of the form `∀ …, a = b` using `rfl`. This is particularly useful for higher
+order assumptions of the form `∀ …, e = ?g x y` to instaniate  a parameter `g` even if that does not
+appear on the lhs of the rule.
+-/
+def dischargeRfl (e : Expr) : SimpM (Option Expr) := do
+  forallTelescope e fun xs e => do
+    let some (t, a, b) := e.eq? | return .none
+    unless a.getAppFn.isMVar || b.getAppFn.isMVar do return .none
+    if (← withReducible <| isDefEq a b) then
+      trace[Meta.Tactic.simp.discharge] "Discharging with rfl: {e}"
+      let u ← getLevel t
+      let proof := mkApp2 (.const ``rfl [u]) t a
+      let proof ← mkLambdaFVars xs proof
+      return .some proof
+    return .none
+
+
 def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
+  let cfg := (← getConfig)
   let e := e.cleanupAnnotations
   if isEqnThmHypothesis e then
-    modify fun s => {s with negativeCachingNotPossible := true}
-    if let some r ← dischargeUsingAssumption? e then
-      return some r
-    if let some r ← dischargeEqnThmHypothesis? e then
-      return some r
+    if cfg.negativeCaching then modify fun s => {s with negativeCachingNotPossible := true}
+    if let some r ← dischargeUsingAssumption? e then return some r
+    if let some r ← dischargeEqnThmHypothesis? e then return some r
   let r ← simp e
-  if r.expr.isTrue then
+  if let some p ← dischargeRfl r.expr then
+    return some (← mkEqMPR (← r.getProof) p)
+  else if r.expr.isTrue then
     return some (← mkOfEqTrue (← r.getProof))
   else
-    modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert r.expr}
+    if cfg.negativeCaching then
+      modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert r.expr}
     return none
 
 abbrev Discharge := Expr → SimpM (Option Expr)
 
-def mkMethods (s : SimprocsArray) (discharge? : Discharge) (wellBehavedDischarge : Bool) (defaultDischarge : Bool := false) : Methods := {
+def mkMethods (s : SimprocsArray) (discharge? : Discharge) (wellBehavedDischarge : Bool)
+    (defaultDischarge : Bool := false) : Methods := {
   pre        := preDefault s
   post       := postDefault s
   dpre       := dpreDefault s
@@ -621,7 +629,8 @@ def mkMethods (s : SimprocsArray) (discharge? : Discharge) (wellBehavedDischarge
 }
 
 def mkDefaultMethodsCore (simprocs : SimprocsArray) : Methods :=
-  mkMethods simprocs dischargeDefault? (wellBehavedDischarge := true) (defaultDischarge := true)
+  mkMethods simprocs dischargeDefault? (wellBehavedDischarge := true)
+  (defaultDischarge := true)
 
 def mkDefaultMethods : CoreM Methods := do
   if simprocs.get (← getOptions) then

@@ -41,3 +41,5 @@ import Lean.Elab.Tactic.ShowTerm
 import Lean.Elab.Tactic.Rfl
 import Lean.Elab.Tactic.Rewrites
 import Lean.Elab.Tactic.DiscrTreeKey
+import Lean.Elab.Tactic.BVDecide
+import Lean.Elab.Tactic.BoolToPropSimps

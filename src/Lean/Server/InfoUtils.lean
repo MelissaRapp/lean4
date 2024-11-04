@@ -141,10 +141,12 @@ def Info.stx : Info → Syntax
   | ofOmissionInfo i       => i.stx
 
 def Info.lctx : Info → LocalContext
-  | Info.ofTermInfo i     => i.lctx
-  | Info.ofFieldInfo i    => i.lctx
-  | Info.ofOmissionInfo i => i.lctx
-  | _                     => LocalContext.empty
+  | .ofTermInfo i           => i.lctx
+  | .ofFieldInfo i          => i.lctx
+  | .ofOmissionInfo i       => i.lctx
+  | .ofMacroExpansionInfo i => i.lctx
+  | .ofCompletionInfo i     => i.lctx
+  | _                       => LocalContext.empty
 
 def Info.pos? (i : Info) : Option String.Pos :=
   i.stx.getPos? (canonicalOnly := true)
@@ -165,7 +167,7 @@ def Info.size? (i : Info) : Option String.Pos := do
 
 -- `Info` without position information are considered to have "infinite" size
 def Info.isSmaller (i₁ i₂ : Info) : Bool :=
-  match i₁.size?, i₂.pos? with
+  match i₁.size?, i₂.size? with
   | some sz₁, some sz₂ => sz₁ < sz₂
   | some _, none => true
   | _, _ => false
@@ -180,6 +182,13 @@ def Info.occursInside? (i : Info) (hoverPos : String.Pos) : Option String.Pos :=
   let tailPos ← i.tailPos?
   guard (headPos ≤ hoverPos && hoverPos < tailPos)
   return hoverPos - headPos
+
+def Info.occursInOrOnBoundary (i : Info) (hoverPos : String.Pos) : Bool := Id.run do
+  let some headPos := i.pos?
+    | return false
+  let some tailPos := i.tailPos?
+    | return false
+  return headPos <= hoverPos && hoverPos <= tailPos
 
 def InfoTree.smallestInfo? (p : Info → Bool) (t : InfoTree) : Option (ContextInfo × Info) :=
   let ts := t.deepestNodes fun ctx i _ => if p i then some (ctx, i) else none
@@ -228,7 +237,7 @@ partial def InfoTree.hoverableInfoAt? (t : InfoTree) (hoverPos : String.Pos) (in
     let _ := @lexOrd
     let _ := @leOfOrd.{0}
     let _ := @maxOfLe
-    results.map (·.1) |>.maximum?
+    results.map (·.1) |>.max?
   let res? := results.find? (·.1 == maxPrio?) |>.map (·.2)
   if let some i := res? then
     if let .ofTermInfo ti := i.info then
@@ -371,7 +380,7 @@ partial def InfoTree.goalsAt? (text : FileMap) (t : InfoTree) (hoverPos : String
               priority := if hoverPos.byteIdx == tailPos.byteIdx + trailSize then 0 else 1
             }]
     return gs
-  let maxPrio? := gs.map (·.priority) |>.maximum?
+  let maxPrio? := gs.map (·.priority) |>.max?
   gs.filter (some ·.priority == maxPrio?)
 where
   hasNestedTactic (pos tailPos) : InfoTree → Bool

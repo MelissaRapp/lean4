@@ -60,7 +60,6 @@ open Snapshots
 open JsonRpc
 
 open Widget in
-abbrev StickyDiagnostics := RBTree InteractiveDiagnostic InteractiveDiagnostic.compareAsDiagnostics
 
 structure WorkerContext where
   /-- Synchronized output channel for LSP messages. Notifications for outdated versions are
@@ -80,7 +79,7 @@ structure WorkerContext where
   /--
   Diagnostics that are included in every single `textDocument/publishDiagnostics` notification.
   -/
-  stickyDiagnosticsRef : IO.Ref StickyDiagnostics
+  stickyDiagnosticsRef : IO.Ref (Array InteractiveDiagnostic)
   hLog                 : FS.Stream
   initParams           : InitializeParams
   processor            : Parser.InputContext → BaseIO Lean.Language.Lean.InitialSnapshot
@@ -126,6 +125,11 @@ section Elab
     newInfoTrees : Array Elab.InfoTree := #[]
     /-- Whether we encountered any snapshot with `Snapshot.isFatal`. -/
     hasFatal := false
+    /--
+    Last `Snapshot.range?` encountered that was not `none`, if any. We use this as a fallback when
+    reporting progress as we should always report *some* range when waiting on a task.
+    -/
+    lastRange? : Option String.Range := none
   deriving Inhabited
 
   register_builtin_option server.reportDelayMs : Nat := {
@@ -155,7 +159,7 @@ This option can only be set on the command line, not in the lakefile or via `set
     let stickyInteractiveDiagnostics ← ctx.stickyDiagnosticsRef.get
     let docInteractiveDiagnostics ← doc.diagnosticsRef.get
     let diagnostics :=
-      stickyInteractiveDiagnostics.toArray ++ docInteractiveDiagnostics
+      stickyInteractiveDiagnostics ++ docInteractiveDiagnostics
       |>.map (·.toDiagnostic)
     let notification := mkPublishDiagnosticsNotification doc.meta diagnostics
     ctx.chanOut.send notification
@@ -169,7 +173,7 @@ This option can only be set on the command line, not in the lakefile or via `set
 
     Debouncing: we only report information
     * after first waiting for `reportDelayMs`, to give trivial tasks a chance to finish
-    * when first blocking, i.e. not before skipping over any unchanged snapshots and such trival
+    * when first blocking, i.e. not before skipping over any unchanged snapshots and such trivial
       tasks
     * afterwards, each time new information is found in a snapshot
     * at the very end, if we never blocked (e.g. emptying a file should make
@@ -227,8 +231,10 @@ This option can only be set on the command line, not in the lakefile or via `set
       | [] => return .pure st
       | t::ts => do
         let mut st := st
+        st := { st with lastRange? := t.range? <|> st.lastRange? }
         unless (← IO.hasFinished t.task) do
-          if let some range := t.range? then
+          -- report *some* recent range even if `t.range?` is `none`; see also `State.lastRange?`
+          if let some range := st.lastRange? then
             ctx.chanOut.send <| mkFileProgressAtPosNotification doc.meta range.start
           if !st.hasBlocked then
             publishDiagnostics ctx doc
@@ -463,14 +469,18 @@ section NotificationHandling
     let ctx ← read
     let s ← get
     let text := s.doc.meta.text
+    let importOutOfDataMessage := .text s!"Imports are out of date and should be rebuilt; \
+      use the \"Restart File\" command in your editor."
     let diagnostic := {
       range      := ⟨⟨0, 0⟩, ⟨1, 0⟩⟩
       fullRange? := some ⟨⟨0, 0⟩, text.utf8PosToLspPos text.source.endPos⟩
       severity?  := DiagnosticSeverity.information
-      message    := .text s!"Imports are out of date and should be rebuilt; \
-        use the \"Restart File\" command in your editor."
+      message := importOutOfDataMessage
     }
-    ctx.stickyDiagnosticsRef.modify fun stickyDiagnostics => stickyDiagnostics.insert diagnostic
+    ctx.stickyDiagnosticsRef.modify fun stickyDiagnostics =>
+      let stickyDiagnostics := stickyDiagnostics.filter
+        (·.message.stripTags != importOutOfDataMessage.stripTags)
+      stickyDiagnostics.push diagnostic
     publishDiagnostics ctx s.doc.toEditableDocumentCore
 
 def handleRpcRelease (p : Lsp.RpcReleaseParams) : WorkerM Unit := do
@@ -539,7 +549,7 @@ section MessageHandling
     -- NOTE: does not wait for `lineRange?` to be fully elaborated, which would be problematic with
     -- fine-grained incremental reporting anyway; instead, the client is obligated to resend the
     -- request when the non-interactive diagnostics of this range have changed
-    return (stickyDiags.toArray ++ diags).filter fun diag =>
+    return (stickyDiags ++ diags).filter fun diag =>
       let r := diag.fullRange
       let diagStartLine := r.start.line
       let diagEndLine   :=
@@ -616,7 +626,7 @@ section MessageHandling
       ctx.chanOut.send <| .responseError id .internalError (toString e) none
       return
 
-    -- we assume that any other request requires at least the the search path
+    -- we assume that any other request requires at least the search path
     -- TODO: move into language-specific request handling
     let t ← IO.bindTask st.srcSearchPathTask fun srcSearchPath => do
       let rc : RequestContext :=

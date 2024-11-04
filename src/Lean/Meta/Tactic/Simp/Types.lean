@@ -49,7 +49,7 @@ def Result.mkEqSymm (e : Expr) (r : Simp.Result) : MetaM Simp.Result :=
 -- We use `SExprMap` because we want to discard cached results after a `discharge?`
 abbrev Cache := SExprMap Result
 
-abbrev NegativeCache := ExprMap (HashSet Expr)
+abbrev NegativeCache := ExprMap (Std.HashSet Expr)
 
 abbrev CongrCache := ExprMap (Option CongrTheorem)
 
@@ -65,7 +65,7 @@ structure Context where
   then it is its reponsability to set `Result.cache := false`.
 
   Motivation for this field:
-  Suppose we have a simplication procedure for normalizing arithmetic terms.
+  Suppose we have a simplification procedure for normalizing arithmetic terms.
   Then, given a term such as `t_1 + ... + t_n`, we don't want to apply the procedure
   to every subterm `t_1 + ... + t_i` for `i < n` for performance issues. The procedure
   can accomplish this by checking whether the parent term is also an arithmetical expression
@@ -157,9 +157,9 @@ deriving Inhabited
 structure State where
   cache        : Cache := {}
   negativeCache: NegativeCache := {}
-  dischargeExpressions: HashSet Expr := {}
+  dischargeExpressions: Std.HashSet Expr := {}
   negativeCachingNotPossible: Bool := false
-  newTheorems  : SimpTheoremsArray := {}
+  localHyps  : SimpTheoremsArray := {}
   congrCache   : CongrCache := {}
   negativeCacheStats : NegativeCacheStats := {}
   usedTheorems : UsedSimps := {}
@@ -188,10 +188,10 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { cache, negativeCache, negativeCachingNotPossible,dischargeExpressions, newTheorems, congrCache, negativeCacheStats, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, newTheorems,congrCache, negativeCacheStats ,usedTheorems, numSteps, diag := f diag }
+    modify fun { cache, negativeCache, negativeCachingNotPossible,dischargeExpressions, localHyps, congrCache, negativeCacheStats, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, localHyps,congrCache, negativeCacheStats ,usedTheorems, numSteps, diag := f diag }
 
 /--
-Result type for a simplification procedure. We have `pre` and `post` simplication procedures.
+Result type for a simplification procedure. We have `pre` and `post` simplification procedures.
 -/
 inductive Step where
   /--
@@ -316,7 +316,8 @@ structure Methods where
   wellBehavedDischarge : Bool := true
   /--
   `defaultDischarge` must **not** be set to `true` unless the default discharger is used.
-  Reason: the mechanism for saving side conditions to recheck when using negative caching across goals is currently built in inside of of it.
+  Reason: the mechanism for saving side conditions to recheck when using negative caching
+  across goals is currently built in inside of of it.
   -/
   defaultDischarge : Bool := false
   deriving Inhabited
@@ -541,7 +542,7 @@ def mkCongrSimp? (f : Expr) : SimpM (Option CongrTheorem) := do
   if kinds.all fun k => match k with | CongrArgKind.fixed => true | CongrArgKind.eq => true | _ => false then
     /- See remark above. -/
     return none
-  match (← get).congrCache.find? f with
+  match (← get).congrCache[f]? with
   | some thm? => return thm?
   | none =>
     let thm? ← mkCongrSimpCore? f info kinds
@@ -568,7 +569,7 @@ def tryAutoCongrTheorem? (e : Expr) : SimpM (Option Result) := do
   for arg in args, kind in cgrThm.argKinds do
     if h : config.ground ∧ i < infos.size then
       if (infos[i]'h.2).isInstImplicit then
-        -- Do not visit instance implict arguments when `ground := true`
+        -- Do not visit instance implicit arguments when `ground := true`
         -- See comment at `congrArgs`
         argsNew := argsNew.push arg
         i := i + 1
