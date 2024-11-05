@@ -144,8 +144,10 @@ structure State where
   cache                      : Cache := {}
   localHyps                  : SimpTheoremsArray := {}
   negativeCache              : NegativeCache := {}
-  dischargeExpressions       : Std.HashSet Expr := {}
+  dischargeExpressions       : Std.HashMap Nat (Std.HashSet Expr) := {}
   negativeCachingNotPossible : Bool := false
+  increaseLoopDepth          : Bool := true
+  simpLoopDepth              : Nat := 0
   congrCache                 : CongrCache := {}
   usedTheorems               : UsedSimps := {}
   numSteps                   : Nat := 0
@@ -172,7 +174,20 @@ opaque dsimp (e : Expr) : SimpM Expr
 
 @[inline] def modifyDiag (f : Diagnostics → Diagnostics) : SimpM Unit := do
   if (← isDiagnosticsEnabled) then
-    modify fun { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, localHyps, congrCache, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, localHyps, congrCache, usedTheorems, numSteps, diag := f diag }
+    modify fun { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, localHyps, simpLoopDepth, increaseLoopDepth, congrCache, usedTheorems, numSteps, diag } => { cache, negativeCache, negativeCachingNotPossible, dischargeExpressions, localHyps, simpLoopDepth, increaseLoopDepth, congrCache, usedTheorems, numSteps, diag := f diag }
+
+@[inline] def withNewSimpLoopDepth (x : SimpM α) : SimpM α := do
+  if (← get).increaseLoopDepth then do
+    let currentDepth := (← get).simpLoopDepth
+    modify fun s => {s with simpLoopDepth := currentDepth + 1}
+    try x finally modify fun s => {s with simpLoopDepth := currentDepth}
+  else
+   x
+
+@[inline] def withOutIncresingSimpLoopDepth (x : SimpM α) : SimpM α := do
+  let savedFlag := (← get).increaseLoopDepth
+  modify fun s => {s with increaseLoopDepth := false}
+  try x finally modify fun s => {s with increaseLoopDepth := savedFlag}
 
 /--
 Result type for a simplification procedure. We have `pre` and `post` simplification procedures.
@@ -236,6 +251,7 @@ See `Simp.Step` type.
 -/
 @[always_inline]
 def andThen (f g : Simproc) : Simproc := fun e => do
+  withOutIncresingSimpLoopDepth do
   match (← f e) with
   | .done r            => return .done r
   | .continue none     => g e
@@ -247,6 +263,7 @@ instance : AndThen Simproc where
 
 @[always_inline]
 def dandThen (f g : DSimproc) : DSimproc := fun e => do
+  withOutIncresingSimpLoopDepth do
   match (← f e) with
   | .done eNew            => return .done eNew
   | .continue none        => g e

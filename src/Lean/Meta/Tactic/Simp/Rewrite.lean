@@ -612,7 +612,11 @@ def dischargeDefault? (e : Expr) : SimpM (Option Expr) := do
     return some (← mkOfEqTrue (← r.getProof))
   else
     if cfg.negativeCaching then
-      modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert r.expr}
+      let previousSet := (← get).dischargeExpressions.get? (← get).simpLoopDepth
+      if let some previousSet := previousSet then
+        modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert s.simpLoopDepth (previousSet.insert r.expr)}
+      else
+        modify fun s => {s with dischargeExpressions := s.dischargeExpressions.insert s.simpLoopDepth {r.expr} }
     return none
 
 abbrev Discharge := Expr → SimpM (Option Expr)

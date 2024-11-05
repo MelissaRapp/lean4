@@ -609,8 +609,14 @@ def cacheResult (e : Expr) (cfg : Config) (r : Result) : SimpM Result := do
   if cfg.memoize && r.cache then
     modify fun s => { s with cache := s.cache.insert e r }
     if cfg.negativeCaching && e == r.expr then
-      if !(← get).negativeCachingNotPossible then
-        modify fun s => { s with negativeCache := s.negativeCache.insert e s.dischargeExpressions}
+      let s := (← get)
+      if !s.negativeCachingNotPossible then
+        for k in s.dischargeExpressions.keysArray.insertionSort fun a b => a > b do
+          if k < s.simpLoopDepth then break
+          if let some existingExpr := s.negativeCache.get? e then
+            modify fun s => { s with negativeCache := s.negativeCache.insert e (existingExpr.insertMany s.dischargeExpressions[k]!)}
+          else
+            modify fun s => { s with negativeCache := s.negativeCache.insert e s.dischargeExpressions[k]!}
   return r
 
 partial def simpLoop (e : Expr) : SimpM Result := withIncRecDepth do
